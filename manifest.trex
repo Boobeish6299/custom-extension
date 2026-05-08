@@ -4,7 +4,7 @@
     <default-locale>en_US</default-locale>
     <name resource-id="CustomHierarchy">Custom Hierarchy Filter</name>
     <description>Cascading Breadcrumb Hierarchy Filter</description>
-    <author name="SQS" email="[EMAIL_ADDRESS]" organization="SquareShitf" website="[WEBSITE]" />
+    <author name="SQS" email="[EMAIL_ADDRESS]" organization="SquareShitf" website="https://example.com" />
     <min-api-version>1.0</min-api-version>
     <source-location>
       <url>https://boobeish6299.github.io/custom-extension/</url>
