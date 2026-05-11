@@ -489,16 +489,28 @@
                 input.type = isDate ? 'date' : (isInt ? 'number' : 'text');
                 input.value = '';
                 input.placeholder = isDate ? '' : 'Enter new value...';
-                input.onchange = async () => {
+
+                // Stop click from bubbling to the parent .dropdown-trigger div.
+                // Without this, every click on the input opens the (empty) popup,
+                // which blocks the browser's native date-picker.
+                input.addEventListener('click', (e) => e.stopPropagation());
+
+                // Shared handler for both onchange (blur) and Enter-key press.
+                const applyParamValue = async () => {
                     const raw = input.value;
                     if (!raw && raw !== 0) return;
                     let newValue;
                     if (isDate) {
-                        // HTML date input gives "YYYY-MM-DD"; Tableau needs a Date object
+                        // HTML date input gives "YYYY-MM-DD"; Tableau needs a Date object.
+                        // IMPORTANT: Use Date.UTC() so the date is not shifted by the local
+                        // timezone offset. Without this, e.g. in IST (UTC+5:30) selecting Feb 2
+                        // creates midnight local = Jan 31 18:30 UTC, so Tableau sees Feb 1.
                         const parts = raw.split('-');
-                        newValue = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                        newValue = new Date(Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])));
                     } else if (isInt) {
-                        newValue = parseInt(raw, 10);
+                        // Use Number() to correctly handle both int and float Tableau parameter types.
+                        // parseInt() truncates floats; Number() preserves them.
+                        newValue = Number(raw);
                         if (isNaN(newValue)) return;
                     } else {
                         newValue = raw;
@@ -518,6 +530,15 @@
                         console.error('Error setting parameter:', err);
                     }
                 };
+
+                // Fire on blur (standard onchange behaviour).
+                input.onchange = applyParamValue;
+
+                // Also fire on Enter key — critical for number inputs where the user
+                // presses Enter expecting the value to apply without clicking away.
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); applyParamValue(); }
+                });
             }
         }
 
