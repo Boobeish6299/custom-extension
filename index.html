@@ -1,62 +1,299 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Multi-Hierarchy Filter</title>
     <!-- Include the Tableau Extensions API library -->
     <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
-    
+
     <style>
-        body { 
-            font-family: var(--fontFamily, Arial, sans-serif); 
-            background: var(--mainBgColor, transparent); margin: 0; padding: 10px; color: #333; font-size: 13px; user-select: none;
-            box-sizing: border-box; overflow-x: hidden;
+        body {
+            font-family: var(--fontFamily, Arial, sans-serif);
+            background: var(--mainBgColor, transparent);
+            margin: 0;
+            padding: 10px;
+            color: #333;
+            font-size: 13px;
+            user-select: none;
+            box-sizing: border-box;
+            overflow-x: hidden;
         }
-        #config-ui { 
-            padding: 10px; background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
-            height: 100vh; overflow-y: auto; box-sizing: border-box; color: #333;
+
+        /* Configuration UI */
+        #config-ui {
+            padding: 15px;
+            background: #fff;
+            border-radius: 6px;
+            box-shadow: 0 1px 10px rgba(0, 0, 0, 0.2);
+            height: 100vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            color: #333;
         }
-        .config-section { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
-        label { font-weight: bold; display: block; margin-top: 10px; font-size: 12px; }
-        select, input[type="text"], input[type="number"], input[type="date"], input[type="color"] { 
-            width: 100%; padding: 6px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; 
+
+        .config-section {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
         }
-        button { 
-            margin-top: 10px; background: #0055A4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; 
+
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 10px;
+            font-size: 12px;
         }
-        button:hover { background: #003d7a; }
-        
-        #main-ui { display: flex; flex-direction: column; position: relative; }
-        .filter-block { margin-bottom: 12px; position: relative; }
-        .filter-title { padding: 6px 8px; font-size: var(--titleFontSize, 13px); font-weight: var(--titleFontWeight, bold); border-radius: 4px; margin-bottom: 4px; }
-        .dropdown-trigger { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; border: 1px solid var(--searchBorderColor, #ccc); border-radius: 4px; padding: 4px 8px; background: var(--searchBgColor, #fff); min-height: 28px; cursor: pointer; }
-        .pill-container { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; min-height: 20px; }
-        .pill { background: var(--accentColor, #22d3ee); color: #000; border-radius: 12px; padding: 2px 8px; font-size: 11px; display: flex; align-items: center; font-weight: 500; }
-        .pill span { margin-left: 6px; cursor: pointer; font-weight: bold; font-size: 14px; }
-        .search-box { border: none; outline: none; background: transparent; flex-grow: 1; min-width: 50px; font-size: 13px; color: var(--searchTextColor, #333); }
-        .tree-popup { position: absolute; top: calc(100% + 2px); left: 0; right: 0; background: var(--bgColor, #0a2d5b); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; max-height: 250px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
-        .tree-container { padding: 0 10px 10px 10px; }
-        ul.tree { list-style-type: none; padding-left: 0; margin: 0; }
-        ul.tree-root { padding-left: 5px; }
-        li.tree-node { list-style-type: none; margin: 2px 0; }
-        .node-content { display: flex; align-items: center; cursor: pointer; padding: 3px 4px; border-radius: 4px; color: inherit; }
-        .node-content:hover { background: rgba(255,255,255,0.1); }
-        .chevron { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; margin-right: 4px; transition: transform 0.1s; }
-        .chevron.expanded { transform: rotate(90deg); }
-        .chevron.empty { visibility: hidden; }
-        .cb-container { width: 14px; height: 14px; border: 1px solid currentColor; border-radius: 3px; margin-right: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .cb-checked { background-color: var(--accentColor, #22d3ee); border-color: var(--accentColor, #22d3ee); color: #000; }
-        #loading { display: none; font-style: italic; margin-bottom: 10px; padding: 0 10px; opacity: 0.7; color: inherit; }
-        .filter-controls { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 11px; padding: 6px 10px 4px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .filter-link { cursor: pointer; font-weight: bold; }
+
+        select,
+        input[type="text"],
+        input[type="number"],
+        input[type="date"],
+        input[type="color"] {
+            width: 100%;
+            padding: 6px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            margin-top: 10px;
+            background: #0055A4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #003d7a;
+        }
+
+        /* Main UI */
+        #main-ui {
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .filter-block {
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .filter-title {
+            padding: 6px 8px;
+            font-size: var(--titleFontSize, 13px);
+            font-weight: var(--titleFontWeight, bold);
+            border-radius: 4px;
+            margin-bottom: 4px;
+        }
+
+        .pill-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 4px;
+        }
+
+        .dropdown-trigger {
+            display: flex;
+            align-items: center;
+            border: 1px solid var(--searchBorderColor, #ccc);
+            border-radius: 4px;
+            padding: 4px 8px;
+            background: var(--searchBgColor, #fff);
+            min-height: 28px;
+            cursor: pointer;
+        }
+
+        .pill {
+            background: var(--accentColor, #22d3ee);
+            color: #000;
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .pill span {
+            margin-left: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .search-box {
+            border: none;
+            outline: none;
+            background: transparent;
+            flex-grow: 1;
+            min-width: 50px;
+            font-size: 13px;
+            color: var(--searchTextColor, #333);
+        }
+
+        .tree-popup {
+            position: absolute;
+            top: calc(100% + 2px);
+            left: 0;
+            right: 0;
+            background: var(--bgColor, #0a2d5b);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            max-height: 250px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        ul.tree {
+            list-style-type: none;
+            padding-left: 15px;
+            margin: 0;
+            padding-bottom: 10px;
+        }
+
+        ul.tree-root {
+            padding-left: 5px;
+        }
+
+        li.tree-node {
+            list-style-type: none;
+            margin: 2px 0;
+        }
+
+        .node-content {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 3px 4px;
+            border-radius: 4px;
+            color: inherit;
+        }
+
+        .chevron {
+            width: 16px;
+            height: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            margin-right: 4px;
+            transition: transform 0.1s;
+        }
+
+        .chevron.expanded {
+            transform: rotate(90deg);
+        }
+
+        .chevron.empty {
+            visibility: hidden;
+        }
+
+        .cb-container {
+            width: 14px;
+            height: 14px;
+            border: 1px solid currentColor;
+            border-radius: 3px;
+            margin-right: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .cb-checked {
+            background-color: var(--accentColor, #22d3ee);
+            border-color: var(--accentColor, #22d3ee);
+            color: #000;
+        }
+
+        #loading {
+            display: none;
+            font-style: italic;
+            margin-bottom: 10px;
+            padding: 0 10px;
+            opacity: 0.7;
+            color: inherit;
+        }
+
+        .filter-controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            font-size: 11px;
+            padding: 6px 10px 4px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .filter-link {
+            cursor: pointer;
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body>
     <div id="config-ui" style="display:none;">
         <h3>Extension Settings</h3>
-        <div class="config-section"><label>Filter Scope:</label><select id="cfg-scope"><option value="global">All Dashboards (Default)</option><option value="local">This Dashboard Only</option></select></div>
-        <div class="config-section" id="config-params-list"></div>
-        <div class="config-section" id="config-filters-list"></div>
-        <button id="save-btn" style="width: 100%;">Save Configuration</button>
+
+        <div class="config-section">
+            <label>Filter Behavior Scope:</label>
+            <select id="cfg-scope">
+                <option value="global">Sync across ALL Dashboard Tabs</option>
+                <option value="local">Apply to this Dashboard Only</option>
+            </select>
+        </div>
+
+        <div class="config-section">
+            <label>Parameters (Date, Weeks, etc):</label>
+            <div id="config-params-list"></div>
+            <button onclick="addConfigParam()">+ Add Parameter</button>
+        </div>
+
+        <div class="config-section">
+            <label>Hierarchies (Leaders, Gitlab):</label>
+            <div id="config-filters-list"></div>
+            <button onclick="addConfigFilter()">+ Add Hierarchy</button>
+        </div>
+
+        <div class="config-section">
+            <label>Global Font Family:</label>
+            <input type="text" id="fontFamily-input" placeholder="Arial, sans-serif" />
+
+            <label>Extension Background Color:</label>
+            <input type="color" id="mainBgColor-input" value="#0a2d5b" />
+
+            <label>Search Box Background Color:</label>
+            <input type="color" id="searchBgColor-input" value="#ffffff" />
+
+            <label>Search Box Border Color:</label>
+            <input type="text" id="searchBorderColor-input" value="#cccccc" placeholder="e.g. #ccc or transparent" />
+
+            <label>Search Box Text Color:</label>
+            <input type="color" id="searchTextColor-input" value="#333333" />
+
+            <label>Title Font Color:</label>
+            <input type="color" id="titleColor-input" value="#ffffff" />
+
+            <label>Title Background Color:</label>
+            <input type="color" id="titleBgColor-input" value="#0055A4" />
+
+            <label>Popup Background Color (Tree):</label>
+            <input type="color" id="bgColor-input" value="#0a2d5b" />
+
+            <label>Accent Color (Checkboxes & Pills):</label>
+            <input type="color" id="accentColor-input" value="#22d3ee" />
+        </div>
+        <button id="save-btn" style="width: 100%;">Save and Close</button>
     </div>
 
     <div id="main-ui" style="display:none;">
@@ -65,23 +302,33 @@
     </div>
 
     <script>
-        let configFilters = []; let configParams = []; let treesData = {}; 
-        let selectedPathsMap = {}; let expandedPathsMap = {}; 
+        // --- State ---
+        let configFilters = []; let configParams = []; let treesData = {};
+        let selectedPathsMap = {}; let expandedPathsMap = {};
         let paramObjects = {}; let isApplyingFilters = false; let activePopupId = null;
 
         function initializeExtension() {
             tableau.extensions.initializeAsync({ 'configure': showConfig }).then(() => {
                 const filtersStr = tableau.extensions.settings.get('filters');
                 const paramsStr = tableau.extensions.settings.get('params');
-                try { if(filtersStr) configFilters = JSON.parse(filtersStr); } catch (e) {}
-                try { if(paramsStr) configParams = JSON.parse(paramsStr); } catch (e) {}
+
+                try { if (filtersStr) configFilters = JSON.parse(filtersStr); } catch (e) { configFilters = []; }
+                try { if (paramsStr) configParams = JSON.parse(paramsStr); } catch (e) { configParams = []; }
+
                 if (configFilters.length > 0 || configParams.length > 0) {
-                    configFilters.forEach(f => { selectedPathsMap[f.id] = []; expandedPathsMap[f.id] = new Set(); });
+                    configFilters.forEach(f => {
+                        selectedPathsMap[f.id] = [];
+                        expandedPathsMap[f.id] = new Set();
+                    });
                     loadStateFromStorage();
                     applyStylesFromSettings();
                     document.getElementById('config-ui').style.display = 'none';
                     document.getElementById('main-ui').style.display = 'flex';
-                    buildMainUI(); fetchDataAndRender(); loadAndRenderParameters();
+                    buildMainUI();
+                    fetchDataAndRender();
+                    loadAndRenderParameters();
+
+                    // Storage Listener for Cross-Tab Sync
                     window.addEventListener('storage', (e) => {
                         if (e.key === 'tableau_hierarchy_state') {
                             loadStateFromStorage();
@@ -94,105 +341,196 @@
             });
         }
 
+        // --- Configuration Logic ---
+        async function showConfig() {
+            document.getElementById('main-ui').style.display = 'none';
+            document.getElementById('config-ui').style.display = 'block';
+            const dashboard = tableau.extensions.dashboardContent.dashboard;
+            try { window.availableParameters = await dashboard.getParametersAsync(); } catch (e) { window.availableParameters = []; }
+
+            document.getElementById('cfg-scope').value = tableau.extensions.settings.get('scope') || 'global';
+            document.getElementById('fontFamily-input').value = tableau.extensions.settings.get('fontFamily') || 'Arial';
+            document.getElementById('mainBgColor-input').value = tableau.extensions.settings.get('mainBgColor') || '#0a2d5b';
+            document.getElementById('searchBgColor-input').value = tableau.extensions.settings.get('searchBgColor') || '#ffffff';
+            document.getElementById('searchBorderColor-input').value = tableau.extensions.settings.get('searchBorderColor') || '#cccccc';
+            document.getElementById('searchTextColor-input').value = tableau.extensions.settings.get('searchTextColor') || '#333333';
+            document.getElementById('titleColor-input').value = tableau.extensions.settings.get('titleColor') || '#ffffff';
+            document.getElementById('titleBgColor-input').value = tableau.extensions.settings.get('titleBgColor') || '#0055A4';
+            document.getElementById('bgColor-input').value = tableau.extensions.settings.get('bgColor') || '#0a2d5b';
+            document.getElementById('accentColor-input').value = tableau.extensions.settings.get('accentColor') || '#22d3ee';
+
+            renderConfigFilters();
+            renderConfigParams();
+            document.getElementById('save-btn').onclick = saveConfig;
+        }
+
+        function renderConfigFilters() {
+            const container = document.getElementById('config-filters-list');
+            container.innerHTML = '';
+            const dashboard = tableau.extensions.dashboardContent.dashboard;
+            let sheetOptions = '';
+            dashboard.worksheets.forEach(w => { sheetOptions += `<option value="${w.name}">${w.name}</option>`; });
+
+            configFilters.forEach(f => {
+                const div = document.createElement('div');
+                div.style.cssText = 'border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:4px; background:#f9f9f9;';
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                        <input type="text" id="cfg-title-${f.id}" value="${f.title}" style="width:80%; font-weight:bold;"/>
+                        <button onclick="removeConfigFilter('${f.id}')" style="background:#ef4444; padding:2px 8px; margin:0;">X</button>
+                    </div>
+                    <label>Source Worksheet:</label>
+                    <select id="cfg-sheet-${f.id}">${sheetOptions}</select>
+                    <label>Columns (comma-separated):</label>
+                    <input type="text" id="cfg-cols-${f.id}" value="${f.cols.join(',')}" />
+                `;
+                container.appendChild(div);
+                document.getElementById(`cfg-sheet-${f.id}`).value = f.sheet;
+            });
+        }
+
+        function addConfigFilter() {
+            configFilters.push({ id: 'f' + Date.now(), title: 'New Hierarchy', sheet: '', cols: ['Column1'] });
+            renderConfigFilters();
+        }
+
+        function removeConfigFilter(id) { configFilters = configFilters.filter(f => f.id !== id); renderConfigFilters(); }
+
+        function renderConfigParams() {
+            const container = document.getElementById('config-params-list');
+            container.innerHTML = '';
+            let pOpts = '';
+            window.availableParameters.forEach(p => { pOpts += `<option value="${p.name}">${p.name}</option>`; });
+            configParams.forEach(p => {
+                const div = document.createElement('div');
+                div.style.cssText = 'border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:4px; background:#f9f9f9;';
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                        <input type="text" id="cfg-ptitle-${p.id}" value="${p.title}" style="width:80%; font-weight:bold;"/>
+                        <button onclick="removeConfigParam('${p.id}')" style="background:#ef4444; padding:2px 8px; margin:0;">X</button>
+                    </div>
+                    <select id="cfg-pname-${p.id}">${pOpts}</select>
+                `;
+                container.appendChild(div);
+                document.getElementById(`cfg-pname-${p.id}`).value = p.paramName;
+            });
+        }
+
+        function addConfigParam() { configParams.push({ id: 'p' + Date.now(), title: 'New Parameter', paramName: '' }); renderConfigParams(); }
+        function removeConfigParam(id) { configParams = configParams.filter(p => p.id !== id); renderConfigParams(); }
+
+        function saveConfig() {
+            configFilters.forEach(f => {
+                f.title = document.getElementById('cfg-title-' + f.id).value;
+                f.sheet = document.getElementById('cfg-sheet-' + f.id).value;
+                f.cols = document.getElementById('cfg-cols-' + f.id).value.split(',').map(s => s.trim());
+            });
+            configParams.forEach(p => {
+                p.title = document.getElementById('cfg-ptitle-' + p.id).value;
+                p.paramName = document.getElementById('cfg-pname-' + p.id).value;
+            });
+
+            tableau.extensions.settings.set('filters', JSON.stringify(configFilters));
+            tableau.extensions.settings.set('params', JSON.stringify(configParams));
+            tableau.extensions.settings.set('scope', document.getElementById('cfg-scope').value);
+            tableau.extensions.settings.set('fontFamily', document.getElementById('fontFamily-input').value);
+            tableau.extensions.settings.set('mainBgColor', document.getElementById('mainBgColor-input').value);
+            tableau.extensions.settings.set('searchBgColor', document.getElementById('searchBgColor-input').value);
+            tableau.extensions.settings.set('searchBorderColor', document.getElementById('searchBorderColor-input').value);
+            tableau.extensions.settings.set('searchTextColor', document.getElementById('searchTextColor-input').value);
+            tableau.extensions.settings.set('titleColor', document.getElementById('titleColor-input').value);
+            tableau.extensions.settings.set('titleBgColor', document.getElementById('titleBgColor-input').value);
+            tableau.extensions.settings.set('bgColor', document.getElementById('bgColor-input').value);
+            tableau.extensions.settings.set('accentColor', document.getElementById('accentColor-input').value);
+
+            tableau.extensions.settings.saveAsync().then(() => {
+                location.reload();
+            });
+        }
+
+        // --- Parameter Logic ---
         async function loadAndRenderParameters() {
             const dashboard = tableau.extensions.dashboardContent.dashboard;
             const parameters = await dashboard.getParametersAsync();
-            for (const pConf of configParams) {
+            configParams.forEach(pConf => {
                 let p = parameters.find(x => x.name === pConf.paramName);
                 if (p) {
                     paramObjects[pConf.id] = p;
-                    if (p.name === 'P_Next_N_Weeks' && p.currentValue.value == 1) {
-                        await p.changeValueAsync(15);
-                        await refreshParamObject(pConf.id, pConf.paramName);
-                    }
-                    if (p.name === 'P_Period' && p.currentValue.value == 'Weekly') {
-                        await p.changeValueAsync('Bi-Weekly');
-                        await refreshParamObject(pConf.id, pConf.paramName);
-                    }
                     setupParameterInput(pConf.id);
-                    renderParamPill(pConf.id);
                 }
-            }
-        }
-
-        // Re-fetch a single parameter object after its value was changed
-        async function refreshParamObject(pId, paramName) {
-            const dashboard = tableau.extensions.dashboardContent.dashboard;
-            const latestParams = await dashboard.getParametersAsync();
-            const fresh = latestParams.find(x => x.name === paramName);
-            if (fresh) { paramObjects[pId] = fresh; renderParamPill(pId); }
+            });
+            // Polling for UI reflection
+            setInterval(async () => {
+                const latestParams = await dashboard.getParametersAsync();
+                configParams.forEach(pConf => {
+                    const p = latestParams.find(x => x.name === pConf.paramName);
+                    if (!p) return;
+                    paramObjects[pConf.id] = p;
+                    renderParamPill(pConf.id);
+                    // Keep input empty — value is shown in pill only
+                    const input = document.getElementById('psearch-' + pConf.id);
+                    if (input && input !== document.activeElement && p.allowableValues.type === 'list') {
+                        input.value = '';
+                    }
+                });
+            }, 600);
         }
 
         function setupParameterInput(pId) {
-            const pConf = configParams.find(c => c.id === pId);
             const p = paramObjects[pId]; const input = document.getElementById('psearch-' + pId);
-            if (!input || !p) return;
-            if (p.allowableValues.type === 'list') { 
-                renderParamPill(pId); renderParamTree(pId); 
+            renderParamPill(pId);
+            if (p.allowableValues.type === 'list') {
+                renderParamTree(pId);
+                input.value = '';
+                input.placeholder = 'Select...';
             } else {
                 const isDate = p.dataType.includes('date');
                 const isInt = p.dataType.includes('int') || p.dataType.includes('float') || p.dataType.includes('real');
                 input.type = isDate ? 'date' : (isInt ? 'number' : 'text');
-                if (isInt && p.allowableValues.type === 'range') {
-                    const range = p.allowableValues;
-                    if (range.minValue) input.min = range.minValue.value;
-                    if (range.maxValue) input.max = range.maxValue.value;
-                    if (range.stepSize) input.step = range.stepSize;
-                }
+                input.value = '';
                 input.placeholder = isDate ? '' : 'Enter new value...';
                 input.onchange = async () => {
-                    let newValue = input.value;
-                    if (!newValue && newValue !== 0) return;
+                    const raw = input.value;
+                    if (!raw && raw !== 0) return;
+                    let newValue;
                     if (isDate) {
-                        // HTML date input gives YYYY-MM-DD; Tableau needs a Date object
-                        const parts = newValue.split('-');
+                        // HTML date input gives "YYYY-MM-DD"; Tableau needs a Date object
+                        const parts = raw.split('-');
                         newValue = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
                     } else if (isInt) {
-                        newValue = parseInt(newValue, 10);
+                        newValue = parseInt(raw, 10);
                         if (isNaN(newValue)) return;
+                    } else {
+                        newValue = raw;
                     }
                     try {
                         const currentP = paramObjects[pId];
                         await currentP.changeValueAsync(newValue);
+                        // Re-fetch the parameter to get updated currentValue
+                        const dashboard = tableau.extensions.dashboardContent.dashboard;
+                        const latestParams = await dashboard.getParametersAsync();
+                        const pConf = configParams.find(c => c.id === pId);
+                        const fresh = latestParams.find(x => x.name === pConf.paramName);
+                        if (fresh) paramObjects[pId] = fresh;
+                        renderParamPill(pId);
                         input.value = '';
-                        await refreshParamObject(pId, pConf.paramName);
-                        fetchDataAndRender();
                     } catch (err) {
-                        console.error('Error setting parameter:', pConf.paramName, err);
+                        console.error('Error setting parameter:', err);
                     }
                 };
             }
         }
 
         function renderParamTree(pId) {
-            const container = document.getElementById('ptree-' + pId); 
-            if(!container) return; container.innerHTML = '';
-            const pConf = configParams.find(c => c.id === pId);
+            const container = document.getElementById('ptree-' + pId); if (!container) return; container.innerHTML = '';
             const p = paramObjects[pId];
             const ul = document.createElement('ul'); ul.className = 'tree tree-root';
-
             p.allowableValues.allowableValues.forEach(v => {
                 const isSelected = p.currentValue.value === v.value;
                 const li = document.createElement('li'); li.className = 'tree-node';
                 const contentDiv = document.createElement('div'); contentDiv.className = 'node-content';
-                
-                contentDiv.innerHTML = `
-                    <div class="cb-container ${isSelected ? 'cb-checked' : ''}">
-                        ${isSelected ? '✓' : ''}
-                    </div>
-                    <span class="node-text">${v.formattedValue}</span>
-                `;
-                
-                contentDiv.onclick = async () => { 
-                    const currentP = paramObjects[pId];
-                    await currentP.changeValueAsync(v.value); 
-                    const input = document.getElementById('psearch-' + pId);
-                    if(input) input.value = '';
-                    togglePopup('ppopup-' + pId, null, true);
-                    await refreshParamObject(pId, pConf.paramName);
-                    renderParamTree(pId);
-                    fetchDataAndRender();
-                };
+                contentDiv.innerHTML = `<div class="cb-container ${isSelected ? 'cb-checked' : ''}">${isSelected ? '✓' : ''}</div><span class="node-text">${v.formattedValue}</span>`;
+                contentDiv.onclick = async () => { await p.changeValueAsync(v.value); document.getElementById('psearch-' + pId).value = ''; renderParamPill(pId); renderParamTree(pId); togglePopup('ppopup-' + pId, null, true); };
                 li.appendChild(contentDiv); ul.appendChild(li);
             });
             container.appendChild(ul);
@@ -200,10 +538,50 @@
 
         function renderParamPill(pId) {
             const p = paramObjects[pId]; const container = document.getElementById('ppills-' + pId);
-            if(p && container) container.innerHTML = `<div class="pill">${p.currentValue.formattedValue}</div>`;
+            if (p && container) container.innerHTML = `<div class="pill">${p.currentValue.formattedValue}</div>`;
         }
 
-        // --- Hierarchy logic ---
+        // --- Data Fetching ---
+        async function fetchDataAndRender() {
+            document.getElementById('loading').style.display = 'block';
+            try {
+                const dash = tableau.extensions.dashboardContent.dashboard;
+                for (let f of configFilters) {
+                    if (!f.sheet) continue;
+                    let ws = dash.worksheets.find(w => w.name === f.sheet);
+                    if (!ws) { console.warn('Worksheet not found:', f.sheet); continue; }
+                    try {
+                        const dataTable = await ws.getSummaryDataAsync();
+                        const colIndices = f.cols.map(c => {
+                            let col = dataTable.columns.find(dc => dc.fieldName === c);
+                            return col ? col.index : -1;
+                        });
+                        let tData = {};
+                        dataTable.data.forEach(row => {
+                            let currentLevel = tData;
+                            for (let i = 0; i < f.cols.length; i++) {
+                                if (colIndices[i] === -1) break;
+                                const val = row[colIndices[i]].formattedValue;
+                                if (!val || val === 'Null') break;
+                                if (!currentLevel[val]) currentLevel[val] = {};
+                                currentLevel = currentLevel[val];
+                            }
+                        });
+                        treesData[f.id] = tData;
+                        renderTree(f.id);
+                        renderPills(f.id);
+                    } catch (wsErr) {
+                        console.warn('Error fetching data from worksheet:', f.sheet, wsErr);
+                    }
+                }
+            } catch (err) {
+                console.error('fetchDataAndRender error:', err);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // --- Tree Rendering ---
         function renderTree(fId) {
             const container = document.getElementById('ptree-cont-' + fId); if (!container) return; container.innerHTML = '';
             const ctrl = document.createElement('div'); ctrl.className = 'filter-controls';
@@ -217,16 +595,17 @@
             Object.keys(nodeData || {}).sort().forEach(key => {
                 const pathStr = [...currentPath, key].join('|');
                 const hasChildren = Object.keys(nodeData[key]).length > 0;
-                if (searchTerm && !key.toLowerCase().includes(searchTerm.toLowerCase())) return;
+                if (searchTerm && !key.toLowerCase().includes(searchTerm.toLowerCase()) && !Object.keys(nodeData[key]).some(k => k.toLowerCase().includes(searchTerm.toLowerCase()))) return;
+
                 const li = document.createElement('li'); li.className = 'tree-node';
                 const contentDiv = document.createElement('div'); contentDiv.className = 'node-content';
                 const isChecked = selectedPathsMap[fId].includes(pathStr);
                 const isExpanded = expandedPathsMap[fId].has(pathStr);
+
                 contentDiv.innerHTML = `<span class="chevron ${!hasChildren ? 'empty' : (isExpanded ? 'expanded' : '')}">▶</span><div class="cb-container ${isChecked ? 'cb-checked' : ''}">${isChecked ? '✓' : ''}</div><span class="node-text">${key}</span>`;
                 contentDiv.onclick = () => toggleCheckNode(fId, pathStr);
                 contentDiv.querySelector('.chevron').onclick = (e) => {
-                    e.stopPropagation(); if (!hasChildren) return;
-                    if (expandedPathsMap[fId].has(pathStr)) expandedPathsMap[fId].delete(pathStr); else expandedPathsMap[fId].add(pathStr); renderTree(fId);
+                    e.stopPropagation(); if (expandedPathsMap[fId].has(pathStr)) expandedPathsMap[fId].delete(pathStr); else expandedPathsMap[fId].add(pathStr); renderTree(fId);
                 };
                 li.appendChild(contentDiv);
                 if (hasChildren && isExpanded) renderTreeLevel(fId, li, nodeData[key], [...currentPath, key], searchTerm);
@@ -247,77 +626,57 @@
             });
         }
 
+        // --- Core Utils ---
         async function applyAllFilters() {
             if (isApplyingFilters) return; isApplyingFilters = true;
             document.getElementById('loading').style.display = 'block';
-            saveStateToStorage(); configFilters.forEach(f => renderPills(f.id));
-            let filtersToApply = {}; 
+            saveStateToStorage();
+            configFilters.forEach(f => { renderPills(f.id); renderTree(f.id); });
+
+            // Build filter values per column
+            let fApply = {};
+            let colsToClear = new Set();
             configFilters.forEach(f => {
-                let levelValues = f.cols.map(() => new Set());
-                (selectedPathsMap[f.id] || []).forEach(pathStr => {
-                    if (pathStr === '___NONE___') return;
-                    pathStr.split('|').forEach((val, i) => levelValues[i].add(val));
-                });
-                f.cols.forEach((col, i) => { if (levelValues[i].size > 0) filtersToApply[col] = Array.from(levelValues[i]); });
+                let lVal = f.cols.map(() => new Set());
+                const sp = selectedPathsMap[f.id] || [];
+                if (sp.includes('___NONE___') || sp.length === 0) {
+                    f.cols.forEach(c => colsToClear.add(c));
+                } else {
+                    sp.forEach(pS => pS.split('|').forEach((v, i) => lVal[i].add(v)));
+                    f.cols.forEach((col, i) => {
+                        if (lVal[i].size > 0) fApply[col] = Array.from(lVal[i]);
+                        else colsToClear.add(col);
+                    });
+                }
             });
-            const workbook = tableau.extensions.dashboardContent.workbook;
+
             const currentDash = tableau.extensions.dashboardContent.dashboard;
-            const scope = tableau.extensions.settings.get('scope') || 'global';
+            // Collect source worksheet names to skip self-filtering
+            const sourceSheets = new Set(configFilters.map(f => f.sheet));
             const promises = [];
+
             currentDash.worksheets.forEach(ws => {
-                configFilters.forEach(f => { f.cols.forEach(col => {
-                    if (filtersToApply[col]) promises.push(ws.applyFilterAsync(col, filtersToApply[col], tableau.FilterUpdateType.Replace));
-                    else promises.push(ws.clearFilterAsync(col));
-                }); });
-            });
-            await Promise.all(promises.map(p => p.catch(()=>{})));
-            document.getElementById('loading').style.display = 'none'; isApplyingFilters = false;
-            if (scope === 'global') {
-                workbook.dashboards.forEach(db => {
-                    if (db.name !== currentDash.name) {
-                        db.worksheets.forEach(ws => { configFilters.forEach(f => { f.cols.forEach(col => {
-                            if (filtersToApply[col]) ws.applyFilterAsync(col, filtersToApply[col], tableau.FilterUpdateType.Replace).catch(()=>{});
-                            else ws.clearFilterAsync(col).catch(()=>{});
-                        }); }); });
-                    }
+                // Skip applying filters back to source worksheets (avoids circular refresh)
+                if (sourceSheets.has(ws.name)) return;
+                Object.keys(fApply).forEach(col => {
+                    promises.push(ws.applyFilterAsync(col, fApply[col], tableau.FilterUpdateType.Replace).catch(() => { }));
                 });
-            }
-            fetchDataAndRender();
+                colsToClear.forEach(col => {
+                    promises.push(ws.clearFilterAsync(col).catch(() => { }));
+                });
+            });
+
+            await Promise.all(promises);
+            document.getElementById('loading').style.display = 'none';
+            isApplyingFilters = false;
         }
 
-        function selectAllPaths(fId) {
-            const getPaths = (node, cur, paths) => {
-                const keys = Object.keys(node); if (keys.length === 0) { paths.push(cur); return; }
-                keys.forEach(k => getPaths(node[k], cur ? `${cur}|${k}` : k, paths));
-            };
-            let paths = []; getPaths(treesData[fId], "", paths);
-            selectedPathsMap[fId] = paths; applyAllFilters();
-        }
+        function selectAllPaths(fId) { selectedPathsMap[fId] = Object.keys(treesData[fId]); applyAllFilters(); }
         function clearFilterPaths(fId) { selectedPathsMap[fId] = ['___NONE___']; applyAllFilters(); }
         function toggleCheckNode(fId, pathStr) {
             if (selectedPathsMap[fId].includes(pathStr)) selectedPathsMap[fId] = selectedPathsMap[fId].filter(p => p !== pathStr);
             else { selectedPathsMap[fId] = selectedPathsMap[fId].filter(p => p !== '___NONE___'); selectedPathsMap[fId].push(pathStr); }
             applyAllFilters();
-        }
-        async function fetchDataAndRender() {
-            const dash = tableau.extensions.dashboardContent.dashboard;
-            for (let f of configFilters) {
-                if (!f.sheet) continue;
-                let ws = dash.worksheets.find(w => w.name === f.sheet);
-                if (!ws) continue;
-                const dataTable = await ws.getSummaryDataAsync();
-                const colIndices = f.cols.map(c => dataTable.columns.find(dc => dc.fieldName === c)?.index ?? -1);
-                let tData = {};
-                dataTable.data.forEach(row => {
-                    let curr = tData;
-                    for (let i = 0; i < f.cols.length; i++) {
-                        const v = row[colIndices[i]]?.formattedValue;
-                        if (!v || v === 'Null') break;
-                        if (!curr[v]) curr[v] = {}; curr = curr[v];
-                    }
-                });
-                treesData[f.id] = tData; renderTree(f.id); renderPills(f.id);
-            }
         }
         function buildMainUI() {
             const container = document.getElementById('filters-container'); container.innerHTML = '';
@@ -330,21 +689,38 @@
             });
         }
         function togglePopup(pId, event, isParam = false) {
-            if (event) event.stopPropagation();
-            if (activePopupId && activePopupId !== pId) { let p = document.getElementById(activePopupId); if(p) p.style.display = 'none'; }
-            const popup = document.getElementById(pId); if(!popup) return;
-            popup.style.display = (popup.style.display === 'block') ? 'none' : 'block';
-            activePopupId = popup.style.display === 'block' ? pId : null;
+            if (event) event.stopPropagation(); const pNode = document.getElementById(pId);
+            if (activePopupId && activePopupId !== pId) { let p = document.getElementById(activePopupId); if (p) p.style.display = 'none'; }
+            pNode.style.display = pNode.style.display === 'block' ? 'none' : 'block';
+            activePopupId = pNode.style.display === 'block' ? pId : null;
         }
         function saveStateToStorage() { localStorage.setItem('tableau_hierarchy_state', JSON.stringify({ paths: selectedPathsMap })); }
-        function loadStateFromStorage() { const s = localStorage.getItem('tableau_hierarchy_state'); if (s) { selectedPathsMap = JSON.parse(s).paths; } }
-        function showConfig() { document.getElementById('config-ui').style.display = 'block'; }
-        function saveConfig() { tableau.extensions.settings.set('scope', document.getElementById('cfg-scope').value); tableau.extensions.settings.saveAsync().then(() => initializeExtension()); }
+        function loadStateFromStorage() {
+            const s = localStorage.getItem('tableau_hierarchy_state');
+            if (s) {
+                try {
+                    const stored = JSON.parse(s).paths || {};
+                    // Merge stored state — only for filter IDs that currently exist
+                    configFilters.forEach(f => {
+                        if (stored[f.id] && Array.isArray(stored[f.id])) {
+                            selectedPathsMap[f.id] = stored[f.id];
+                        }
+                    });
+                } catch (e) { console.warn('Error loading state:', e); }
+            }
+        }
         function applyStylesFromSettings() {
-            const s = tableau.extensions.settings.getAll(); document.documentElement.style.setProperty('--accentColor', s.accentColor || '#22d3ee');
-            document.documentElement.style.setProperty('--mainBgColor', s.mainBgColor || 'transparent'); document.documentElement.style.setProperty('--bgColor', s.bgColor || '#0a2d5b');
+            const s = tableau.extensions.settings.getAll();
+            document.documentElement.style.setProperty('--fontFamily', s.fontFamily || 'Arial, sans-serif');
+            document.documentElement.style.setProperty('--mainBgColor', s.mainBgColor || 'transparent');
+            document.documentElement.style.setProperty('--searchBgColor', s.searchBgColor || '#ffffff');
+            document.documentElement.style.setProperty('--searchBorderColor', s.searchBorderColor || '#cccccc');
+            document.documentElement.style.setProperty('--searchTextColor', s.searchTextColor || '#333333');
+            document.documentElement.style.setProperty('--bgColor', s.bgColor || '#0a2d5b');
+            document.documentElement.style.setProperty('--accentColor', s.accentColor || '#22d3ee');
         }
         initializeExtension();
     </script>
 </body>
+
 </html>
