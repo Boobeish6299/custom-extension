@@ -333,6 +333,8 @@
                         if (e.key === 'tableau_hierarchy_state') {
                             loadStateFromStorage();
                             configFilters.forEach(f => { renderPills(f.id); renderTree(f.id); });
+                            // Also apply the filters to worksheets on this dashboard
+                            applyAllFilters();
                         }
                     });
                     return;
@@ -489,28 +491,16 @@
                 input.type = isDate ? 'date' : (isInt ? 'number' : 'text');
                 input.value = '';
                 input.placeholder = isDate ? '' : 'Enter new value...';
-
-                // Stop click from bubbling to the parent .dropdown-trigger div.
-                // Without this, every click on the input opens the (empty) popup,
-                // which blocks the browser's native date-picker.
-                input.addEventListener('click', (e) => e.stopPropagation());
-
-                // Shared handler for both onchange (blur) and Enter-key press.
-                const applyParamValue = async () => {
+                input.onchange = async () => {
                     const raw = input.value;
                     if (!raw && raw !== 0) return;
                     let newValue;
                     if (isDate) {
-                        // HTML date input gives "YYYY-MM-DD"; Tableau needs a Date object.
-                        // IMPORTANT: Use Date.UTC() so the date is not shifted by the local
-                        // timezone offset. Without this, e.g. in IST (UTC+5:30) selecting Feb 2
-                        // creates midnight local = Jan 31 18:30 UTC, so Tableau sees Feb 1.
+                        // HTML date input gives "YYYY-MM-DD"; Tableau needs a Date object
                         const parts = raw.split('-');
-                        newValue = new Date(Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])));
+                        newValue = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
                     } else if (isInt) {
-                        // Use Number() to correctly handle both int and float Tableau parameter types.
-                        // parseInt() truncates floats; Number() preserves them.
-                        newValue = Number(raw);
+                        newValue = parseInt(raw, 10);
                         if (isNaN(newValue)) return;
                     } else {
                         newValue = raw;
@@ -530,15 +520,6 @@
                         console.error('Error setting parameter:', err);
                     }
                 };
-
-                // Fire on blur (standard onchange behaviour).
-                input.onchange = applyParamValue;
-
-                // Also fire on Enter key — critical for number inputs where the user
-                // presses Enter expecting the value to apply without clicking away.
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); applyParamValue(); }
-                });
             }
         }
 
@@ -715,15 +696,29 @@
             pNode.style.display = pNode.style.display === 'block' ? 'none' : 'block';
             activePopupId = pNode.style.display === 'block' ? pId : null;
         }
-        function saveStateToStorage() { localStorage.setItem('tableau_hierarchy_state', JSON.stringify({ paths: selectedPathsMap })); }
+        function saveStateToStorage() {
+            // Save by column key (e.g. "L2 (VP),L3 (Manager),L4 (IC)") instead of filter ID
+            // so different dashboard instances with different IDs can share state
+            const byColKey = {};
+            configFilters.forEach(f => {
+                const colKey = f.cols.join(',');
+                byColKey[colKey] = selectedPathsMap[f.id] || [];
+            });
+            localStorage.setItem('tableau_hierarchy_state', JSON.stringify({ paths: byColKey }));
+        }
         function loadStateFromStorage() {
             const s = localStorage.getItem('tableau_hierarchy_state');
             if (s) {
                 try {
                     const stored = JSON.parse(s).paths || {};
-                    // Merge stored state — only for filter IDs that currently exist
                     configFilters.forEach(f => {
-                        if (stored[f.id] && Array.isArray(stored[f.id])) {
+                        const colKey = f.cols.join(',');
+                        // Try matching by column key first (cross-dashboard sync)
+                        if (stored[colKey] && Array.isArray(stored[colKey])) {
+                            selectedPathsMap[f.id] = stored[colKey];
+                        }
+                        // Fallback: try matching by filter ID (same dashboard reload)
+                        else if (stored[f.id] && Array.isArray(stored[f.id])) {
                             selectedPathsMap[f.id] = stored[f.id];
                         }
                     });
