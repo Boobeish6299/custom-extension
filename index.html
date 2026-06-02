@@ -1195,49 +1195,10 @@
             });
             renderPrevPeriodDisplay();
 
-            // Polling fallback: keeps UI in sync if a parameter is changed elsewhere
-            // (native parameter control on the dashboard, another extension, etc.).
-            // The ParameterChanged listener handles most cases; this is a safety net.
-            setInterval(async () => {
-                try {
-                    const latestParams = await dashboard.getParametersAsync();
-                    configParams.forEach(pConf => {
-                        const p = latestParams.find(x => x.name === pConf.paramName);
-                        if (!p) return;
-
-                        const prev = paramObjects[pConf.id];
-                        paramObjects[pConf.id] = p;
-
-                        // Detect external value change → repaint pill / input
-                        const prevVal = prev && prev.currentValue ? prev.currentValue.formattedValue : null;
-                        const newVal = p.currentValue ? p.currentValue.formattedValue : null;
-                        if (prevVal !== newVal) {
-                            renderParamPill(pConf.id);
-
-                            const input = document.getElementById('psearch-' + pConf.id);
-                            if (input && input !== document.activeElement) {
-                                const isDate =
-                                    p.dataType === tableau.DataType.Date ||
-                                    p.dataType === tableau.DataType.DateTime ||
-                                    (typeof p.dataType === 'string' && p.dataType.toLowerCase().includes('date'));
-                                if (isDate) {
-                                    input.value = formatParamDate(p);
-                                } else if (
-                                    p.allowableValues &&
-                                    p.allowableValues.type === tableau.ParameterValueType.List
-                                ) {
-                                    input.value = '';
-                                }
-                            }
-                        }
-                    });
-                } catch (e) {
-                    // swallow polling errors — non-fatal
-                }
-            // 5s, not 600ms: the ParameterChanged listener already handles
-            // external param changes in real time; this poll is only a slow
-            // safety net, so a tighter interval is wasted background API work.
-            }, 5000);
+            // Removed: polling fallback via setInterval + getParametersAsync().
+            // The ParameterChanged event listeners registered above handle all
+            // external parameter changes in real time. Polling every 5s was
+            // generating constant get-parameter-models API calls with no benefit.
         }
 
 
@@ -2884,6 +2845,16 @@
             }
             isApplyingFilters = true;
 
+            // Tell the tree extension to hold off fetching while we apply
+            // filters in multiple phases. Without this, each phase's batch of
+            // applyFilterAsync calls triggers a separate 20s+ Snowflake query
+            // in the tree extension. The flag is cleared (and tree ext
+            // releases suppress + does one final fetch) after Phase 2 below.
+            try {
+                tableau.extensions.settings.set('filterApplyActive', '1');
+                await tableau.extensions.settings.saveAsync();
+            } catch (_) {}
+
             // Scope change (date param or TOOL): some worksheets must re-apply
             // their existing filter values even when those values are unchanged,
             // because a parameter change alone (changeValueAsync) doesn't reliably
@@ -2955,6 +2926,14 @@
             } catch (e) {
                 console.warn('[filter-ext] phase-2 apply failed:', e);
             }
+
+            // All phases done. Clear the suppress flag so the tree extension
+            // lifts its hold and does exactly one final fetch to render the
+            // fully-applied state.
+            try {
+                tableau.extensions.settings.set('filterApplyActive', '');
+                await tableau.extensions.settings.saveAsync();
+            } catch (_) {}
 
             isApplyingFilters = false;
 
