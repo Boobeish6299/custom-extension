@@ -4,7 +4,7 @@
 <head>
     <title>Multi-Hierarchy Filter</title>
     <!-- Include the Tableau Extensions API library -->
-    <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api/lib/tableau.extensions.1.latest.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api@1.16.0/lib/tableau.extensions.1.latest.js"></script>
 
     <style>
         body {
@@ -588,6 +588,38 @@
         </div>
 
         <div class="config-section">
+            <label>Excluded Worksheets (never filtered):</label>
+            <input type="text" id="cfg-skip-sheets" placeholder="e.g. Previous period Calc, LOC Gen" />
+            <small style="display:block; color:#666; margin-top:4px;">
+                Comma-separated. A worksheet is skipped if its name equals or contains
+                any entry (case-insensitive). Use for heavy/unused calc sheets so the
+                extension never pushes filters that trigger a live-source re-query.
+            </small>
+        </div>
+
+        <div class="config-section">
+            <label>Force-Refresh Worksheets (recompute on date/tool change):</label>
+            <input type="text" id="cfg-force-refresh-sheets" placeholder="e.g. KPI, Summary" />
+            <small style="display:block; color:#666; margin-top:4px;">
+                Comma-separated (same matching as above). On a date/Tool change, only
+                these worksheets' filters are re-applied to force a recompute; all
+                other worksheets keep their cached filter state and are not re-queried.
+                Leave blank to re-apply everything on every scope change (slower, safe default).
+            </small>
+        </div>
+
+        <div class="config-section">
+            <label>Max Rows per Source Read (0 = all):</label>
+            <input type="number" id="cfg-max-rows" min="0" step="1000" placeholder="0" />
+            <small style="display:block; color:#666; margin-top:4px;">
+                Caps rows read from each hierarchy / Tool source worksheet. Leave 0
+                (unbounded) unless that sheet is aggregated to ~one row per user/value
+                and is large on the live source. A cap below the true distinct count
+                will drop users/values from the filter (a truncation warning is logged).
+            </small>
+        </div>
+
+        <div class="config-section">
             <label>Global Font Family:</label>
             <input type="text" id="fontFamily-input" placeholder="Arial, sans-serif" />
 
@@ -638,6 +670,31 @@
         let fetchDataInProgress = false;
         let pendingAutoSelect = false;
         let configWsFilters = [];
+        // Worksheet names (or name substrings) the extension must NEVER push
+        // applyFilterAsync / clearFilterAsync to. Heavy calc sheets that aren't
+        // shown (e.g. the LOC-Generated/Accepted "Previous period Calc" sheets)
+        // belong here: on a live Snowflake connection every filter/clear forces
+        // that sheet to re-query the warehouse, so touching unused sheets is
+        // pure cost. Loaded from the 'skipSheets' setting; matching is
+        // case-insensitive exact-OR-substring (see buildSkipSheetSet).
+        let configSkipSheets = [];
+        // Worksheet names (or name substrings) whose filters must be re-applied
+        // on a scope change (date param / Tool) even when their filter VALUES
+        // are unchanged — used to force KPI/scope-dependent tiles to recompute.
+        // On scope change only these worksheets' cache entries are dropped, so
+        // every other worksheet keeps its dedup cache and is NOT re-filtered
+        // (avoiding wasted live-source re-queries). Loaded from the
+        // 'forceRefreshSheets' setting; same case-insensitive exact-OR-substring
+        // matching as skipSheets. When empty, scope changes fall back to wiping
+        // the whole cache (prior behavior) so no KPI silently goes stale.
+        let configForceRefreshSheets = [];
+        // Max rows to pull from a source worksheet's summary data when building
+        // the hierarchy tree / Tool domain. 0 = unbounded (Tableau's "all rows").
+        // Default 0 so the tree is always complete. Only set a positive cap when
+        // the source sheet is aggregated to ~one row per user/value AND is large
+        // on the live source — a cap below the true distinct count would silently
+        // drop users/values from the filter (a truncation warning is logged).
+        let configMaxRows = 0;
         let wsFiltersData = {};
         let selectedWsPathsMap = {};
         let exactFieldNameMap = {};
@@ -673,6 +730,23 @@
         // worksheets only see filter events for columns that actually changed.
         // Key: `${wsName}::${col}`. Value: 'CLEAR' or sorted JSON of values.
         let lastAppliedFilterState = {};
+        // Set of `${wsName}::${col}` keys this extension has actually pushed a
+        // REAL (non-clear) filter to during this session. Drives the "only clear
+        // what we applied" rule: a column the extension never filtered needs no
+        // clearFilterAsync (which on a live source is a wasted warehouse
+        // re-query). Unlike lastAppliedFilterState, this is NOT wiped on scope
+        // change, so after a date/tool change we still know which columns we
+        // applied and must clear — preventing stale filters from lingering.
+        let appliedFilterKeys = new Set();
+        // Per-worksheet Set of cleaned data-source field names (via
+        // getCleanFieldName). Lets the apply/clear fan-out skip (ws,col) pairs
+        // where the worksheet's data source doesn't even contain the column —
+        // applyFilterAsync/clearFilterAsync on a missing field is a wasted
+        // server round-trip (a live-source re-query) that just errors. Populated
+        // lazily by ensureWorksheetFieldSets() and cached for the session.
+        // A worksheet maps to null when introspection failed → "don't restrict"
+        // (attempt the filter anyway), so a metadata hiccup never drops a valid filter.
+        let worksheetFieldCleanSets = {};
 
         // --- Deferred-apply state ---
         // Selections in selectedPathsMap / selectedWsPathsMap mutate
@@ -842,10 +916,16 @@
                 const filtersStr = tableau.extensions.settings.get('filters');
                 const paramsStr = tableau.extensions.settings.get('params');
                 const wsFiltersStr = tableau.extensions.settings.get('wsFilters');
+                const skipSheetsStr = tableau.extensions.settings.get('skipSheets');
+                const forceRefreshStr = tableau.extensions.settings.get('forceRefreshSheets');
+                const maxRowsStr = tableau.extensions.settings.get('maxRows');
 
                 try { if (filtersStr) configFilters = JSON.parse(filtersStr); } catch (e) { configFilters = []; }
                 try { if (paramsStr) configParams = JSON.parse(paramsStr); } catch (e) { configParams = []; }
                 try { if (wsFiltersStr) configWsFilters = JSON.parse(wsFiltersStr); } catch (e) { configWsFilters = []; }
+                try { if (skipSheetsStr) configSkipSheets = JSON.parse(skipSheetsStr); } catch (e) { configSkipSheets = []; }
+                try { if (forceRefreshStr) configForceRefreshSheets = JSON.parse(forceRefreshStr); } catch (e) { configForceRefreshSheets = []; }
+                { const n = parseInt(maxRowsStr, 10); configMaxRows = Number.isFinite(n) && n > 0 ? n : 0; }
 
                 if (configFilters.length > 0 || configParams.length > 0 || configWsFilters.length > 0) {
                     configFilters.forEach(f => {
@@ -944,6 +1024,9 @@
             try { window.availableParameters = await dashboard.getParametersAsync(); } catch (e) { window.availableParameters = []; }
 
             document.getElementById('cfg-scope').value = tableau.extensions.settings.get('scope') || 'global';
+            document.getElementById('cfg-skip-sheets').value = (configSkipSheets || []).join(', ');
+            document.getElementById('cfg-force-refresh-sheets').value = (configForceRefreshSheets || []).join(', ');
+            document.getElementById('cfg-max-rows').value = configMaxRows || 0;
             document.getElementById('fontFamily-input').value = tableau.extensions.settings.get('fontFamily') || 'Arial';
             document.getElementById('mainBgColor-input').value = tableau.extensions.settings.get('mainBgColor') || '#0a2d5b';
             document.getElementById('searchBgColor-input').value = tableau.extensions.settings.get('searchBgColor') || '#ffffff';
@@ -1065,10 +1148,18 @@
                 wf.sheet = document.getElementById('cfg-wssheet-' + wf.id).value;
                 wf.col = document.getElementById('cfg-wscol-' + wf.id).value.trim();
             });
+            configSkipSheets = document.getElementById('cfg-skip-sheets').value
+                .split(',').map(s => s.trim()).filter(s => s !== '');
+            configForceRefreshSheets = document.getElementById('cfg-force-refresh-sheets').value
+                .split(',').map(s => s.trim()).filter(s => s !== '');
+            { const n = parseInt(document.getElementById('cfg-max-rows').value, 10); configMaxRows = Number.isFinite(n) && n > 0 ? n : 0; }
 
             tableau.extensions.settings.set('filters', JSON.stringify(configFilters));
             tableau.extensions.settings.set('params', JSON.stringify(configParams));
             tableau.extensions.settings.set('wsFilters', JSON.stringify(configWsFilters));
+            tableau.extensions.settings.set('skipSheets', JSON.stringify(configSkipSheets));
+            tableau.extensions.settings.set('forceRefreshSheets', JSON.stringify(configForceRefreshSheets));
+            tableau.extensions.settings.set('maxRows', String(configMaxRows));
             tableau.extensions.settings.set('scope', document.getElementById('cfg-scope').value);
             tableau.extensions.settings.set('fontFamily', document.getElementById('fontFamily-input').value);
             tableau.extensions.settings.set('mainBgColor', document.getElementById('mainBgColor-input').value);
@@ -1143,7 +1234,10 @@
                 } catch (e) {
                     // swallow polling errors — non-fatal
                 }
-            }, 600);
+            // 5s, not 600ms: the ParameterChanged listener already handles
+            // external param changes in real time; this poll is only a slow
+            // safety net, so a tighter interval is wasted background API work.
+            }, 5000);
         }
 
 
@@ -1582,6 +1676,40 @@
             return false;
         }
 
+        // Populate worksheetFieldCleanSets for the given worksheets (skips ones
+        // already cached). Each entry is a Set of cleaned field names from the
+        // worksheet's data source(s) — the authoritative list of fields that
+        // CAN be filtered (includes fields not shown on the sheet). On failure
+        // the worksheet is cached as null = "don't restrict". Calls run in
+        // parallel and are cached, so the cost is one metadata pass per session.
+        async function ensureWorksheetFieldSets(worksheets) {
+            const toLoad = (worksheets || []).filter(ws => !(ws.name in worksheetFieldCleanSets));
+            if (toLoad.length === 0) return;
+            await Promise.all(toLoad.map(async ws => {
+                try {
+                    const dss = await ws.getDataSourcesAsync();
+                    const set = new Set();
+                    (dss || []).forEach(ds => (ds.fields || []).forEach(f => {
+                        if (f && f.name) set.add(getCleanFieldName(f.name));
+                        if (f && f.id) set.add(getCleanFieldName(f.id));
+                    }));
+                    worksheetFieldCleanSets[ws.name] = set.size ? set : null;
+                } catch (e) {
+                    console.warn('[filter-ext] getDataSourcesAsync failed for', ws.name, '— will not restrict by field:', e && e.message ? e.message : e);
+                    worksheetFieldCleanSets[ws.name] = null; // unknown → don't restrict
+                }
+            }));
+        }
+
+        // True if the worksheet's data source contains a field matching `col`.
+        // Returns true when the field set is unknown (null) so we never drop a
+        // valid filter due to a metadata failure.
+        function worksheetHasColumn(wsName, col) {
+            const set = worksheetFieldCleanSets[wsName];
+            if (!set) return true; // null/undefined → not introspected → don't restrict
+            return set.has(getCleanFieldName(col));
+        }
+
         // --- Data Fetching ---
         // opts.autoSelect: when true (or on the very first fetch), the
         // hierarchy selection is reset to all CURRENTLY ACTIVE users. When
@@ -1624,10 +1752,13 @@
 
                     const dataTable = await ws.getSummaryDataAsync({
                         ignoreSelection: true,
-                        maxRows: 0
+                        maxRows: configMaxRows
                     });
 
                     console.log(`[filter-ext] Hierarchy "${f.title}" sheet "${f.sheet}" returned ${dataTable.data.length} rows; cols:`, dataTable.columns.map(c => c.fieldName));
+                    if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
+                        console.warn(`[filter-ext] Hierarchy "${f.title}" hit the ${configMaxRows}-row cap — the tree may be INCOMPLETE (some users/levels dropped). Raise "Max Rows per Source Read" or set it to 0.`);
+                    }
 
                     // Build column-index list for each configured column, using the
                     // tolerant matcher so federated/prefixed field names still resolve.
@@ -1794,7 +1925,10 @@
                     // filters applied to that worksheet).
                     if (!allValues.length) {
                         try {
-                            const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 0 });
+                            const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
+                            if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
+                                console.warn(`[filter-ext] Worksheet filter "${wf.title}" hit the ${configMaxRows}-row cap reading "${wf.sheet}" — the value list may be INCOMPLETE. Raise "Max Rows per Source Read" or set it to 0.`);
+                            }
                             const colIdx = dataTable.columns.findIndex(c =>
                                 matchColumnName(wf.col, c.fieldName, exactFieldNameMap)
                             );
@@ -2560,15 +2694,21 @@
             });
 
             // Sheets that must NEVER receive applyFilterAsync / clearFilterAsync.
-            // Previously this excluded the hierarchy tree's source sheets
-            // (Split - Metrics, Total, and their Prev variants) and routed
-            // team picks to the tree via tableau.extensions.settings instead.
-            // That IPC never worked: settings are scoped per-extension-instance,
-            // so the tree's settings.get('teamExplicitPaths') always returned
-            // null and the tree rendered every leader. The L2-L9 columns are
-            // already on those sheets' filter shelves in the workbook, so
-            // applyFilterAsync replaces existing filter values cleanly.
-            const skipSheets = new Set();
+            // Driven by the 'Excluded Worksheets' config setting (configSkipSheets).
+            // On a live source every filter/clear forces the target sheet to
+            // re-query, so heavy/unused calc sheets (e.g. the LOC-Generated/
+            // Accepted "Previous period Calc" sheets, which aren't shown) should
+            // be excluded here. Matching is case-insensitive, exact OR substring,
+            // so a single entry like "Previous period Calc" excludes a whole
+            // family of related calc sheets.
+            const skipPatterns = (configSkipSheets || [])
+                .map(s => (s || '').trim().toLowerCase())
+                .filter(Boolean);
+            const isSkippedSheet = (name) => {
+                if (!name) return false;
+                const lower = name.toLowerCase();
+                return skipPatterns.some(p => lower === p || lower.includes(p));
+            };
 
             const promises = [];
             const summary = { applies: [], clears: [], skipped: 0, failures: [] };
@@ -2580,11 +2720,19 @@
             Object.keys(fApply).forEach(col => {
                 applySignatures[col] = JSON.stringify([...fApply[col]].sort());
             });
+            const skippedSheetNames = [];
+            // Cache each target worksheet's data-source field set so the fan-out
+            // can skip (ws,col) pairs the worksheet can't filter on (sheets on a
+            // different data source, text/image sheets, etc.) — avoiding wasted
+            // live-source round-trips that would just error.
+            const targetWorksheets = currentDash.worksheets.filter(ws => !isSkippedSheet(ws.name));
+            await ensureWorksheetFieldSets(targetWorksheets);
             currentDash.worksheets.forEach(ws => {
-                if (skipSheets.has(ws.name)) return; // ✅ never filter tree source sheets
+                if (isSkippedSheet(ws.name)) { skippedSheetNames.push(ws.name); return; } // excluded calc/unused sheets
                 const skipCols = skipColsPerSheet[ws.name] || new Set();
                 Object.keys(fApply).forEach(col => {
                     if (skipCols.has(col)) return;
+                    if (!worksheetHasColumn(ws.name, col)) { summary.skipped++; return; }
                     const cacheKey = `${ws.name}::${col}`;
                     const sig = applySignatures[col];
                     if (lastAppliedFilterState[cacheKey] === sig) {
@@ -2594,7 +2742,7 @@
                     summary.applies.push(`${ws.name}::${col}(${fApply[col].length})`);
                     promises.push(
                         ws.applyFilterAsync(col, fApply[col], tableau.FilterUpdateType.Replace)
-                            .then(() => { lastAppliedFilterState[cacheKey] = sig; })
+                            .then(() => { lastAppliedFilterState[cacheKey] = sig; appliedFilterKeys.add(cacheKey); })
                             .catch(e => {
                                 summary.failures.push(`apply ${ws.name}::${col}: ${e && e.message ? e.message : e}`);
                                 console.error('[filter-ext] applyFilterAsync failed:', ws.name, col, e);
@@ -2603,15 +2751,20 @@
                 });
                 colsToClear.forEach(col => {
                     if (skipCols.has(col)) return;
+                    if (!worksheetHasColumn(ws.name, col)) { summary.skipped++; return; }
                     const cacheKey = `${ws.name}::${col}`;
-                    if (lastAppliedFilterState[cacheKey] === 'CLEAR') {
+                    // Only clear a column we actually applied a real filter to.
+                    // If we never filtered it, there is nothing to undo and the
+                    // clearFilterAsync would be a wasted server round-trip (a
+                    // live-source re-query) for a filter that was never set.
+                    if (!appliedFilterKeys.has(cacheKey)) {
                         summary.skipped++;
                         return;
                     }
                     summary.clears.push(`${ws.name}::${col}`);
                     promises.push(
                         ws.clearFilterAsync(col)
-                            .then(() => { lastAppliedFilterState[cacheKey] = 'CLEAR'; })
+                            .then(() => { lastAppliedFilterState[cacheKey] = 'CLEAR'; appliedFilterKeys.delete(cacheKey); })
                             .catch(e => {
                                 summary.failures.push(`clear ${ws.name}::${col}: ${e && e.message ? e.message : e}`);
                                 console.error('[filter-ext] clearFilterAsync failed:', ws.name, col, e);
@@ -2622,6 +2775,7 @@
 
             await Promise.all(promises);
             console.log(`[filter-ext] apply-summary: ${summary.applies.length} applies, ${summary.clears.length} clears, ${summary.skipped} skipped, ${summary.failures.length} failures`);
+            if (skippedSheetNames.length) console.log(`[filter-ext] excluded sheets (no filter pushed): ${skippedSheetNames.join(' | ')}`);
             if (summary.applies.length) console.log(`[filter-ext] applies: ${summary.applies.join(' | ')}`);
             if (summary.clears.length) console.log(`[filter-ext] clears: ${summary.clears.join(' | ')}`);
             if (summary.failures.length) console.warn(`[filter-ext] failures: ${summary.failures.join(' | ')}`);
@@ -2730,16 +2884,36 @@
             }
             isApplyingFilters = true;
 
-            // Scope change (date param or TOOL): drop the per-(ws,col) signature
-            // cache so the upcoming filter pushes actually reach Tableau even
-            // when L2-L9 / TOOL values are unchanged from the last apply.
-            // A parameter change alone (changeValueAsync) doesn't reliably kick
-            // KPI worksheets into recomputing — re-applying the existing filter
-            // values is what forces the refresh. Without this, changing only
-            // the date param leaves KPI tiles displaying stale numbers until
-            // the user reloads the extension.
+            // Scope change (date param or TOOL): some worksheets must re-apply
+            // their existing filter values even when those values are unchanged,
+            // because a parameter change alone (changeValueAsync) doesn't reliably
+            // kick KPI tiles into recomputing — re-applying the filter is what
+            // forces the refresh. Columns whose VALUES actually changed (e.g. the
+            // auto-selected team) re-apply on their own via the signature cache,
+            // so we only need to force the unchanged-value case here.
+            //
+            // Surgical: if the user listed the scope-dependent KPI worksheets in
+            // 'forceRefreshSheets', drop ONLY those worksheets' cache entries so
+            // they re-apply; every other worksheet keeps its dedup cache and is
+            // not needlessly re-filtered (no wasted live-source re-query). When
+            // the list is empty, fall back to wiping the whole cache so no KPI
+            // tile can silently go stale.
             if (autoSelectActive) {
-                lastAppliedFilterState = {};
+                const forcePatterns = (configForceRefreshSheets || [])
+                    .map(s => (s || '').trim().toLowerCase())
+                    .filter(Boolean);
+                if (forcePatterns.length === 0) {
+                    lastAppliedFilterState = {};
+                } else {
+                    const matchesForce = (wsName) => {
+                        const lower = (wsName || '').toLowerCase();
+                        return forcePatterns.some(p => lower === p || lower.includes(p));
+                    };
+                    Object.keys(lastAppliedFilterState).forEach(key => {
+                        const wsName = key.split('::')[0];
+                        if (matchesForce(wsName)) delete lastAppliedFilterState[key];
+                    });
+                }
             }
 
             // PHASE 1 (only when autoSelectActive): apply WS filters / params
@@ -2792,11 +2966,22 @@
                 return;
             }
 
-            // Post-apply refresh of dropdown domains. autoSelect:false so the
-            // user's just-set selection (whether from Cancel All, Select All,
-            // a manual toggle, or the phase-1 auto-select above) is preserved.
-            try { await fetchDataAndRender({ autoSelect: false }); }
-            catch (e) { console.warn('[filter-ext] post-apply refetch failed:', e); }
+            // NOTE: no post-apply fetchDataAndRender here. It used to re-query
+            // every hierarchy/ws-filter source sheet on each apply, but it was
+            // redundant on a live source:
+            //  • The hierarchy filter is never applied to the tree's own source
+            //    sheets (skipColsPerSheet), so applying it can't change the tree
+            //    or dropdown domains — there's nothing new to fetch.
+            //  • Phase 2 already re-rendered the UI (renderPills/renderTree above)
+            //    and read the trees that Phase 1 populated — it does not re-query.
+            //  • autoSelectActive=true (date/tool change, first load): Phase 1
+            //    already fetched at the new scope; a trailing fetch hits the
+            //    identical scope.
+            //  • autoSelectActive=false (manual team toggle, cross-tab sync,
+            //    load-with-saved-selection): scope never changes on this path,
+            //    so the source tree is unchanged and the caller already rendered it.
+            // External scope changes still refresh via the FilterChanged /
+            // SummaryDataChanged / ParameterChanged listeners.
 
             // Whatever was dirty is now applied — reset the Apply bar.
             markClean();
@@ -3014,12 +3199,17 @@
             configFilters.forEach(f => {
                 const input = document.getElementById('search-' + f.id);
                 if (input) {
+                    let searchTimer = null;
                     input.oninput = () => {
                         const popup = document.getElementById('popup-' + f.id);
                         if (popup && popup.style.display !== 'block') {
                             togglePopup('popup-' + f.id, null);
                         }
-                        renderTree(f.id);
+                        // Debounce: the tree isn't virtualized, so re-rendering it
+                        // on every keystroke janks on large hierarchies. Coalesce
+                        // rapid typing into one render ~250ms after the last key.
+                        clearTimeout(searchTimer);
+                        searchTimer = setTimeout(() => renderTree(f.id), 250);
                     };
                     input.onclick = (e) => {
                         e.stopPropagation();
