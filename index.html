@@ -2967,7 +2967,7 @@
                 // clearing it left the tree-ext suppressed for up to 90s, which
                 // showed up as "filters not reflecting in the hierarchy view until
                 // reload" (the team selection was already written to settings, so a
-                // reload picked it up — but the live view never refreshed).
+                // reload picked it up — but the live view never refreshed)...
                 try {
                     tableau.extensions.settings.set('filterApplyActive', '');
                     await tableau.extensions.settings.saveAsync();
