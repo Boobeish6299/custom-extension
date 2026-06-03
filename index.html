@@ -1273,7 +1273,7 @@
         }
 
         function renderPrevPeriodDisplay() {
-            const el = document.getElementById('prev-period-value');
+            const el = document.getElementById('prev-period-value')||null;
             const wrapper = document.getElementById('prev-period-block');
             if (!el) return;
             const r = computePrevPeriodRange();
@@ -3177,7 +3177,7 @@
             });
 
             // 1b. Previous-period read-only display — auto-hides when fewer than 2 date params are configured.
-            container.innerHTML += `<div class="prev-period-block" id="prev-period-block" style="display:none"><div class="prev-period-row"><span class="prev-period-label" style="color:${tC}">Compared to previous period</span><span class="prev-period-value" id="prev-period-value">—</span></div></div>`;
+            container.innerHTML += `<div class="prev-period-block" id="prev-period-block" style="display:none"><div class="prev-period-row"><span class="prev-period-label" style="color:${tC}">Compared to previous period</span></div></div>`;
 
             // 2. Worksheet Filters (Tool) — custom multi-select dropdown
             configWsFilters.forEach(wf => {
