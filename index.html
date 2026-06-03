@@ -2480,7 +2480,7 @@
         // only (so refetching Leader Filter reflects the new Tool scope), then
         // pass 2 applies everything including the freshly-auto-selected
         // hierarchy.
-        async function _applyFilterStateToTableau(includeHierarchy) {
+        async function _applyFilterStateToTableau(includeHierarchy, restrictToSheetNames = null) {
             const fApply = {};
             const colsToClear = new Set();
 
@@ -2688,6 +2688,12 @@
             await ensureWorksheetFieldSets(targetWorksheets);
             currentDash.worksheets.forEach(ws => {
                 if (isSkippedSheet(ws.name)) { skippedSheetNames.push(ws.name); return; } // excluded calc/unused sheets
+                // Phase 1 passes a restriction set so the new date/Tool scope is
+                // applied ONLY to the source sheets the auto-select refetch reads.
+                // Every other sheet is left for Phase 2, so a sheet carrying both
+                // the Tool and hierarchy columns re-queries once (Phase 2) instead
+                // of twice. When restrictToSheetNames is null, all sheets pass.
+                if (restrictToSheetNames && !restrictToSheetNames.has(ws.name)) return;
                 const skipCols = skipColsPerSheet[ws.name] || new Set();
                 Object.keys(fApply).forEach(col => {
                     if (skipCols.has(col)) return;
@@ -2894,7 +2900,16 @@
             if (autoSelectActive) {
                 suppressRefetchFor(30000);
                 try {
-                    await _applyFilterStateToTableau(false);
+                    // Restrict Phase 1 to the worksheets the auto-select refetch
+                    // actually re-reads (hierarchy + ws-filter source sheets), so
+                    // dual-column downstream sheets aren't re-queried here only to
+                    // be re-queried again in Phase 2. Phase 2 (no restriction)
+                    // applies the full filter set to every sheet exactly as before.
+                    const phase1Sheets = new Set([
+                        ...configFilters.map(f => f.sheet),
+                        ...configWsFilters.map(wf => wf.sheet),
+                    ].filter(Boolean));
+                    await _applyFilterStateToTableau(false, phase1Sheets);
                 } catch (e) {
                     console.warn('[filter-ext] phase-1 apply failed:', e);
                 }
