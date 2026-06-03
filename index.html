@@ -1273,18 +1273,18 @@
         }
 
         function renderPrevPeriodDisplay() {
-            const el = document.getElementById('prev-period-value');
+            // const el = document.getElementById('prev-period-value')||null;
             const wrapper = document.getElementById('prev-period-block');
-            if (!el) return;
+            // if (!el) return;
             const r = computePrevPeriodRange();
             if (!r) { if (wrapper) wrapper.style.display = 'none'; return; }
             if (wrapper) wrapper.style.display = '';
-            const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            const fmt = d => {
-                const day = d.getUTCDate();
-                return `${shortMonths[d.getUTCMonth()]} ${day < 10 ? '0' + day : day}, ${d.getUTCFullYear()}`;
-            };
-            el.textContent = `${fmt(r.prevStart)} – ${fmt(r.prevEnd)}`;
+            // const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            // const fmt = d => {
+            //     const day = d.getUTCDate();
+            //     return `${shortMonths[d.getUTCMonth()]} ${day < 10 ? '0' + day : day}, ${d.getUTCFullYear()}`;
+            // };
+            // el.textContent = `${fmt(r.prevStart)} – ${fmt(r.prevEnd)}`;
         }
 
         function setupParameterInput(pConf) {
@@ -2864,9 +2864,6 @@
                 return;
             }
             isApplyingFilters = true;
-            // Wrap the entire apply in try/finally so the tree extension is ALWAYS
-            // released (filterApplyActive cleared) even if a step below throws.
-            try {
 
             // Tell the tree extension to hold off fetching while we apply
             // filters in multiple phases. Without this, each phase's batch of
@@ -2959,21 +2956,15 @@
                 console.warn('[filter-ext] phase-2 apply failed:', e);
             }
 
-            // All phases done.
-            } finally {
-                // ALWAYS release the tree extension — even if a step above threw —
-                // so it lifts its suppress hold and does its single final fetch.
-                // Without this, an error between setting filterApplyActive='1' and
-                // clearing it left the tree-ext suppressed for up to 90s, which
-                // showed up as "filters not reflecting in the hierarchy view until
-                // reload" (the team selection was already written to settings, so a
-                // reload picked it up — but the live view never refreshed)...
-                try {
-                    tableau.extensions.settings.set('filterApplyActive', '');
-                    await tableau.extensions.settings.saveAsync();
-                } catch (_) {}
-                isApplyingFilters = false;
-            }
+            // All phases done. Clear the suppress flag so the tree extension
+            // lifts its hold and does exactly one final fetch to render the
+            // fully-applied state.
+            try {
+                tableau.extensions.settings.set('filterApplyActive', '');
+                await tableau.extensions.settings.saveAsync();
+            } catch (_) {}
+
+            isApplyingFilters = false;
 
             if (pendingApply) {
                 const wasAutoSelect = pendingAutoSelect;
@@ -3186,7 +3177,7 @@
             });
 
             // 1b. Previous-period read-only display — auto-hides when fewer than 2 date params are configured.
-            container.innerHTML += `<div class="prev-period-block" id="prev-period-block" style="display:none"><div class="prev-period-row"><span class="prev-period-label" style="color:${tC}">Compared to</span><span class="prev-period-value" id="prev-period-value">—</span></div></div>`;
+            container.innerHTML += `<div class="prev-period-block" id="prev-period-block" style="display:none"><div class="prev-period-row"><span class="prev-period-label" style="color:${tC}">Compared to previous period</span></div></div>`;
 
             // 2. Worksheet Filters (Tool) — custom multi-select dropdown
             configWsFilters.forEach(wf => {
