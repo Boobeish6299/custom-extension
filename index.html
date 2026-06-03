@@ -912,7 +912,7 @@
         }
 
         function initializeExtension() {
-            tableau.extensions.initializeAsync({ 'configure': showConfig }).then(() => {
+            tableau.extensions.initializeAsync({ 'configure': showConfig }).then(async () => {
                 const filtersStr = tableau.extensions.settings.get('filters');
                 const paramsStr = tableau.extensions.settings.get('params');
                 const wsFiltersStr = tableau.extensions.settings.get('wsFilters');
@@ -937,56 +937,54 @@
                     });
                     // Detect a true first-load (no saved state in localStorage)
                     // BEFORE loadStateFromStorage runs and populates the maps.
-                    // On first load we override the workbook's saved date
-                    // params with today-7 / today so the executive view
-                    // always opens on the last-7-days window.
                     const isFirstLoad = !localStorage.getItem('tableau_hierarchy_state');
                     loadStateFromStorage();
                     applyStylesFromSettings();
                     document.getElementById('config-ui').style.display = 'none';
                     document.getElementById('main-ui').style.display = 'flex';
                     buildMainUI();
-                    fetchDataAndRender().then(() => {
-                        registerTableauListeners();
-                        try {
-                            // First-load: seed default date window (today-7 → today).
-                            // Identified by paramName containing both "start"/"end"
-                            // and "date" — works for the workbook's "Start Date" /
-                            // "End Date" params.
-                            if (isFirstLoad) {
-                                const today = new Date();
-                                const startD = new Date(today);
-                                startD.setDate(today.getDate() - 7);
-                                const toUtc = d => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-                                configParams.forEach(p => {
-                                    if (!paramObjects[p.id]) return;
-                                    if (!isDateParam(paramObjects[p.id])) return;
-                                    const pn = (p.paramName || '').toLowerCase();
-                                    if (pn.includes('start')) {
-                                        pendingParams[p.id] = toUtc(startD);
-                                    } else if (pn.includes('end')) {
-                                        pendingParams[p.id] = toUtc(today);
-                                    }
-                                });
-                            }
 
-                            const hasSelections = (typeof selectedPathsMap === 'object' && Object.values(selectedPathsMap || {}).some(a => Array.isArray(a) && a.length > 0))
-                                || (typeof selectedWsPathsMap === 'object' && Object.values(selectedWsPathsMap || {}).some(a => Array.isArray(a) && a.length > 0));
-                            const hasPendingDateDefaults = Object.keys(pendingParams).length > 0;
-                            if (hasPendingDateDefaults) {
-                                // Push date defaults + saved selections in a
-                                // single batched apply. userApply also calls
-                                // changeValueAsync and runs apply with
-                                // autoSelectActive=true (because dates are
-                                // in pendingParams), so the Team tree snaps
-                                // to "everyone active in the new window".
-                                userApply();
-                            } else if (hasSelections) {
-                                applyAllFilters();
-                            }
-                        } catch (e) { console.error('[filter-ext] initial apply failed:', e); }
-                    });
-                    loadAndRenderParameters();
+                    // Await params before deciding how many fetches to make.
+                    // Previously fire-and-forget, which forced a wasted initial
+                    // fetch just so paramObjects would be populated in time for
+                    // date seeding. Now we seed dates here, before any fetch.
+                    await loadAndRenderParameters();
+
+                    // First-load: seed default date window (today-7 → today)
+                    // into pendingParams so userApply can batch them with the
+                    // single definitive fetch below.
+                    if (isFirstLoad) {
+                        const today = new Date();
+                        const startD = new Date(today);
+                        startD.setDate(today.getDate() - 7);
+                        const toUtc = d => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+                        configParams.forEach(p => {
+                            if (!paramObjects[p.id]) return;
+                            if (!isDateParam(paramObjects[p.id])) return;
+                            const pn = (p.paramName || '').toLowerCase();
+                            if (pn.includes('start')) pendingParams[p.id] = toUtc(startD);
+                            else if (pn.includes('end'))   pendingParams[p.id] = toUtc(today);
+                        });
+                    }
+
+                    registerTableauListeners();
+
+                    try {
+                        const hasSelections = (typeof selectedPathsMap === 'object' && Object.values(selectedPathsMap || {}).some(a => Array.isArray(a) && a.length > 0))
+                            || (typeof selectedWsPathsMap === 'object' && Object.values(selectedWsPathsMap || {}).some(a => Array.isArray(a) && a.length > 0));
+                        const hasPendingDateDefaults = Object.keys(pendingParams).length > 0;
+                        if (hasPendingDateDefaults) {
+                            // Date defaults pending: skip initial fetch entirely.
+                            // Phase 1 of userApply applies params then does the
+                            // ONE authoritative fetch with the correct date scope.
+                            userApply();
+                        } else if (hasSelections) {
+                            await fetchDataAndRender();
+                            applyAllFilters();
+                        } else {
+                            await fetchDataAndRender();
+                        }
+                    } catch (e) { console.error('[filter-ext] initial apply failed:', e); }
 
                     // Request initial extension height
                     try {
@@ -1703,12 +1701,12 @@
             // so they reflect the live date/tool scope, not accumulated history.
             const freshTreesData = {};
 
-            for (const f of configFilters) {
+            await Promise.all(configFilters.map(async (f) => {
                 try {
                     const ws = dashboard.worksheets.find(w => w.name === f.sheet);
                     if (!ws) {
                         console.warn(`[filter-ext] Worksheet "${f.sheet}" not found for hierarchy "${f.title}". Available worksheets:`, dashboard.worksheets.map(w => w.name));
-                        continue;
+                        return;
                     }
 
                     const dataTable = await ws.getSummaryDataAsync({
@@ -1755,7 +1753,7 @@
 
                     if (presentColsWithIdx.length === 0) {
                         console.warn(`[filter-ext] Hierarchy "${f.title}" has NO matching columns at all. Skipping.`);
-                        continue;
+                        return;
                     }
 
                     // Remember the effective column list (only the levels
@@ -1853,7 +1851,7 @@
                 // Re-render this hierarchy's UI
                 try { renderPills(f.id); } catch (e) {}
                 try { renderTree(f.id); } catch (e) {}
-            }
+            }));
 
             // ----- Worksheet filters (Team, etc.) -----
             for (const wf of configWsFilters) {
