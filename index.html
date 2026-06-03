@@ -2695,9 +2695,22 @@
                 // of twice. When restrictToSheetNames is null, all sheets pass.
                 if (restrictToSheetNames && !restrictToSheetNames.has(ws.name)) return;
                 const skipCols = skipColsPerSheet[ws.name] || new Set();
+                // Each logical column is registered in fApply/colsToClear under
+                // BOTH its exact (technical) name and its configured name. When
+                // both clean to the same field on this sheet, pushing both would
+                // apply the same filter twice. Track the clean field names already
+                // handled for this sheet and skip the duplicate form — marking a
+                // clean name only AFTER worksheetHasColumn passes, so the
+                // configured-name fallback still fires on sheets where the exact
+                // form doesn't match.
+                const appliedClean = new Set();
+                const clearedClean = new Set();
                 Object.keys(fApply).forEach(col => {
                     if (skipCols.has(col)) return;
                     if (!worksheetHasColumn(ws.name, col)) { summary.skipped++; return; }
+                    const cleanApply = getCleanFieldName(col);
+                    if (appliedClean.has(cleanApply)) { summary.skipped++; return; } // duplicate name form of an already-applied column
+                    appliedClean.add(cleanApply);
                     const cacheKey = `${ws.name}::${col}`;
                     const sig = applySignatures[col];
                     if (lastAppliedFilterState[cacheKey] === sig) {
@@ -2717,6 +2730,9 @@
                 colsToClear.forEach(col => {
                     if (skipCols.has(col)) return;
                     if (!worksheetHasColumn(ws.name, col)) { summary.skipped++; return; }
+                    const cleanClear = getCleanFieldName(col);
+                    if (clearedClean.has(cleanClear)) { summary.skipped++; return; } // duplicate name form of an already-cleared column
+                    clearedClean.add(cleanClear);
                     const cacheKey = `${ws.name}::${col}`;
                     // Only clear a column we actually applied a real filter to.
                     // If we never filtered it, there is nothing to undo and the
