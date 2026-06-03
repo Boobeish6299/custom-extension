@@ -1273,18 +1273,18 @@
         }
 
         function renderPrevPeriodDisplay() {
-            const el = document.getElementById('prev-period-value')||null;
+            // const el = document.getElementById('prev-period-value')||null;
             const wrapper = document.getElementById('prev-period-block');
-            if (!el) return;
+            // if (!el) return;
             const r = computePrevPeriodRange();
             if (!r) { if (wrapper) wrapper.style.display = 'none'; return; }
             if (wrapper) wrapper.style.display = '';
-            const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            const fmt = d => {
-                const day = d.getUTCDate();
-                return `${shortMonths[d.getUTCMonth()]} ${day < 10 ? '0' + day : day}, ${d.getUTCFullYear()}`;
-            };
-            el.textContent = `${fmt(r.prevStart)} – ${fmt(r.prevEnd)}`;
+            // const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            // const fmt = d => {
+            //     const day = d.getUTCDate();
+            //     return `${shortMonths[d.getUTCMonth()]} ${day < 10 ? '0' + day : day}, ${d.getUTCFullYear()}`;
+            // };
+            // el.textContent = `${fmt(r.prevStart)} – ${fmt(r.prevEnd)}`;
         }
 
         function setupParameterInput(pConf) {
