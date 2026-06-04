@@ -1276,15 +1276,14 @@
             const el = document.getElementById('prev-period-value');
             const wrapper = document.getElementById('prev-period-block');
             if (!el) return;
+            // Static label by request — the explicit date range ("Jan 26, 2026 –
+            // Mar 31, 2026") overflowed the narrow panel and is implied by the
+            // selected window anyway. computePrevPeriodRange() still gates
+            // visibility so the row hides when no valid date pair is configured.
             const r = computePrevPeriodRange();
             if (!r) { if (wrapper) wrapper.style.display = 'none'; return; }
             if (wrapper) wrapper.style.display = '';
-            const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            const fmt = d => {
-                const day = d.getUTCDate();
-                return `${shortMonths[d.getUTCMonth()]} ${day < 10 ? '0' + day : day}, ${d.getUTCFullYear()}`;
-            };
-            el.textContent = `${fmt(r.prevStart)} – ${fmt(r.prevEnd)}`;
+            el.textContent = 'previous period';
         }
 
         function setupParameterInput(pConf) {
@@ -1610,14 +1609,24 @@
                 clean = parts[parts.length - 1];
             }
             
-            // Remove namespace prefix like "USR:" or "usr:"
-            clean = clean.replace(/^[A-Za-z]+:/, '');
+            // Remove Tableau internal field notation like "none:L2_FULL_NAME:nk"
+            // getSummaryDataAsync on federated sources returns fieldName in this
+            // format. Strip the leading "none:" (or any word prefix) and trailing
+            // ":nk" (or any ":word" suffix) so "none:L2_FULL_NAME:nk" → "L2_FULL_NAME".
+            clean = clean.replace(/^[a-z]+:/i, '').replace(/:[a-z]+$/i, '');
             
             // Remove hash suffixes like "_252008466686362B:QK"
             clean = clean.replace(/_[A-Fa-f0-9]{10,}(?::[A-Za-z0-9]+)?$/i, '');
             
             // Remove any remaining brackets
             clean = clean.replace(/^\[/, '').replace(/\]$/, '');
+
+            // Normalise underscore word-separators to spaces so that the
+            // internal column name "L2_FULL_NAME" matches the configured
+            // caption "L2 Full Name" after both pass through toLowerCase().
+            // This is the key fix for federated sources where getSummaryDataAsync
+            // returns the internal underscore name rather than the caption.
+            clean = clean.replace(/_/g, ' ');
             
             return clean.trim().toLowerCase();
         }
@@ -2441,13 +2450,51 @@
             return out;
         }
 
+        // --- Cross-extension sync via the 'Hierarchy Sync' workbook parameter ---
+        // tableau.extensions.settings is scoped per extension instance, so the
+        // tree extension can NEVER read keys written here (that broken channel
+        // caused the "tree doesn't update until reload" bug: the tree's cache
+        // signature read teamExplicitPaths from its OWN empty settings store,
+        // so team-only changes never busted its fetch cache). Workbook
+        // parameters, by contrast, are dashboard-global: changeValueAsync here
+        // fires ParameterChanged in every extension. We serialise
+        // {applyActive, stamp, paths} as JSON into the string parameter
+        // 'Hierarchy Sync'; the tree extension drives its suppress/definitive-
+        // fetch orchestration and its cache signature from that value.
+        // The parameter must exist in the workbook (string, allowable
+        // values: all). If absent we warn once and no-op.
+        const SYNC_PARAM_NAME = 'Hierarchy Sync';
+        let _syncParam = null;          // cached Parameter object
+        let _syncParamMissing = false;  // warn once, then no-op
+        let _syncParamState = { applyActive: '', stamp: null, paths: [] };
+
+        async function writeSyncParam(patch) {
+            try {
+                if (_syncParamMissing) return;
+                if (!_syncParam) {
+                    _syncParam = await tableau.extensions.dashboardContent.dashboard
+                        .findParameterAsync(SYNC_PARAM_NAME);
+                    if (!_syncParam) {
+                        _syncParamMissing = true;
+                        console.warn(`[filter-ext] workbook parameter "${SYNC_PARAM_NAME}" not found — the hierarchy tree extension will not receive selection-sync signals. Create a string parameter with that exact name (allowable values: all).`);
+                        return;
+                    }
+                }
+                Object.assign(_syncParamState, patch);
+                await _syncParam.changeValueAsync(JSON.stringify(_syncParamState));
+                console.log('[filter-ext] writeSyncParam:', JSON.stringify(_syncParamState));
+            } catch (e) {
+                console.warn('[filter-ext] sync param write failed:', e);
+            }
+        }
+
         // Writes the current selection to this extension's settings. The keys
         // were originally intended as a cross-extension IPC channel for the
         // hierarchy tree, but tableau.extensions.settings is scoped per
-        // extension instance so the tree never saw these values. The L2-L9
-        // filter now reaches the tree's source sheets directly via
-        // applyFilterAsync, so these settings are effectively a per-extension
-        // audit log of the last applied picks.
+        // extension instance so the tree never saw these values. The live IPC
+        // channel is now the 'Hierarchy Sync' parameter (writeSyncParam above);
+        // these settings remain only as a per-extension audit log of the last
+        // applied picks.
         async function syncSelectionToSettings() {
             try {
                 if (!tableau.extensions || !tableau.extensions.settings) return;
@@ -2460,13 +2507,14 @@
                 });
                 tableau.extensions.settings.set('teamExplicitPaths', JSON.stringify(explicit));
                 tableau.extensions.settings.set('teamSelectionStamp', String(Date.now()));
-                // Await saveAsync so the new settings propagate to other
-                // extensions (the hierarchy_tree_table reads teamExplicitPaths
-                // via settings.get) BEFORE applyFilterAsync fires FilterChanged
-                // events that trigger the tree's debouncedFetch — otherwise the
-                // tree renders with a stale pickset and shows leaders that
-                // should have been filtered out.
                 await tableau.extensions.settings.saveAsync();
+                // The REAL cross-extension write: await it so the new pickset is
+                // committed to the 'Hierarchy Sync' parameter BEFORE
+                // applyFilterAsync fires FilterChanged events that trigger the
+                // tree's debouncedFetch — the tree's fetch signature includes
+                // these paths, so this ordering guarantees its first post-apply
+                // signature read already sees the new selection (cache miss).
+                await writeSyncParam({ paths: explicit, stamp: Date.now() });
                 console.log(`[filter-ext] syncSelectionToSettings: wrote teamExplicitPaths=${JSON.stringify(explicit)}`);
             } catch (e) {
                 console.warn('[filter-ext] settings sync error:', e);
@@ -2873,10 +2921,9 @@
             // applyFilterAsync calls triggers a separate 20s+ Snowflake query
             // in the tree extension. The flag is cleared (and tree ext
             // releases suppress + does one final fetch) after Phase 2 below.
-            try {
-                tableau.extensions.settings.set('filterApplyActive', '1');
-                await tableau.extensions.settings.saveAsync();
-            } catch (_) {}
+            // Sent via the 'Hierarchy Sync' parameter — settings.set/saveAsync
+            // never reached the tree extension (settings are per-instance).
+            await writeSyncParam({ applyActive: '1' });
 
             // Scope change (date param or TOOL): some worksheets must re-apply
             // their existing filter values even when those values are unchanged,
@@ -2968,9 +3015,20 @@
                 // showed up as "filters not reflecting in the hierarchy view until
                 // reload" (the team selection was already written to settings, so a
                 // reload picked it up — but the live view never refreshed).
+                // FLICKER FIX: delay the applyActive='' signal by 800ms.
+                // applyFilterAsync resolves its Promise before Tableau fires the
+                // resulting FilterChanged events on the target worksheets (e.g.
+                // Split - Metrics). If we clear applyActive immediately,
+                // the tree extension lifts its suppress window and its
+                // FilterChanged listener fires debouncedFetch() on those events,
+                // producing a second fetch that races the correct one already
+                // triggered. The 800ms delay keeps the tree ext suppressed long
+                // enough for those FilterChanged events to arrive and be discarded,
+                // so only the single definitive post-apply fetch runs.
+                // 800ms is well within Snowflake latency (5-30s) — no visible delay.
                 try {
-                    tableau.extensions.settings.set('filterApplyActive', '');
-                    await tableau.extensions.settings.saveAsync();
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    await writeSyncParam({ applyActive: '' });
                 } catch (_) {}
                 isApplyingFilters = false;
             }
