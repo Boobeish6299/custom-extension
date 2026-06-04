@@ -195,7 +195,10 @@
 
         .prev-period-value {
             font-size: 11px;
-            color: var(--searchTextColor, #333);
+            /* Same color as .prev-period-label — "Compared to previous period"
+               is one sentence; the old --searchTextColor made the second half
+               render in a different (near-invisible on dark panels) color. */
+            color: var(--titleColor, #393939);
             background: transparent;
             border: none;
             cursor: default;
@@ -969,22 +972,39 @@
 
                     registerTableauListeners();
 
+                    // Hold the tree extension NOW — before our initial Snowflake
+                    // fetch — so its first-load fallback doesn't render the
+                    // worksheets' stale saved filter state (e.g. last session's
+                    // single-leader pick) while we initialise. Every branch below
+                    // ends in applyAllFilters(), whose finally writes
+                    // applyActive='' and triggers the tree's definitive fetch.
+                    await writeSyncParam({ applyActive: '1' });
+
                     try {
-                        const hasSelections = (typeof selectedPathsMap === 'object' && Object.values(selectedPathsMap || {}).some(a => Array.isArray(a) && a.length > 0))
-                            || (typeof selectedWsPathsMap === 'object' && Object.values(selectedWsPathsMap || {}).some(a => Array.isArray(a) && a.length > 0));
                         const hasPendingDateDefaults = Object.keys(pendingParams).length > 0;
                         if (hasPendingDateDefaults) {
                             // Date defaults pending: skip initial fetch entirely.
                             // Phase 1 of userApply applies params then does the
                             // ONE authoritative fetch with the correct date scope.
                             userApply();
-                        } else if (hasSelections) {
-                            await fetchDataAndRender();
-                            applyAllFilters();
                         } else {
                             await fetchDataAndRender();
+                            // Always push the restored state to the worksheets —
+                            // INCLUDING the default/"All" (empty-pick) state, which
+                            // _applyFilterStateToTableau turns into clearFilterAsync
+                            // on the team columns. The no-selection path used to
+                            // skip this, so a team filter saved into the workbook
+                            // by a previous session stayed applied and the
+                            // dashboard showed a single leader until the user
+                            // manually changed a filter and hit Apply.
+                            applyAllFilters();
                         }
-                    } catch (e) { console.error('[filter-ext] initial apply failed:', e); }
+                    } catch (e) {
+                        console.error('[filter-ext] initial apply failed:', e);
+                        // Release the tree extension so it runs its own definitive
+                        // fetch instead of waiting on us forever.
+                        writeSyncParam({ applyActive: '' });
+                    }
 
                     // Request initial extension height
                     try {
@@ -3256,7 +3276,7 @@
             });
 
             // 1b. Previous-period read-only display — auto-hides when fewer than 2 date params are configured.
-            container.innerHTML += `<div class="prev-period-block" id="prev-period-block" style="display:none"><div class="prev-period-row"><span class="prev-period-label" style="color:${tC}">Compared to</span><span class="prev-period-value" id="prev-period-value">—</span></div></div>`;
+            container.innerHTML += `<div class="prev-period-block" id="prev-period-block" style="display:none"><div class="prev-period-row"><span class="prev-period-label" style="color:${tC}">Compared to</span><span class="prev-period-value" id="prev-period-value" style="color:${tC}">—</span></div></div>`;
 
             // 2. Worksheet Filters (Tool) — custom multi-select dropdown
             configWsFilters.forEach(wf => {
