@@ -247,19 +247,18 @@
         }
 
         /* Inactive tree node = exists in the master tree but has no activity
-           in the current date/tool scope. Visually de-emphasised and the
-           checkbox-toggle click is rejected in JS — but the chevron expand
-           still works (the user may want to drill into an inactive parent
-           to see its active children). */
+           in the current fetch's domain. Visually de-emphasised but STILL
+           selectable: with datasource-scoped team filters the Leader Filter
+           source sheet self-filters to the applied selection, so after an
+           apply every OTHER leader shows as inactive — rejecting their clicks
+           locked users out of ever changing the selection. Selecting an
+           inactive member is harmless (worst case their rows are empty in
+           the current scope). */
         .node-content.inactive {
             opacity: 0.45;
         }
         .node-content.inactive .node-text {
             font-style: italic;
-            cursor: default;
-        }
-        .node-content.inactive .cb-container {
-            cursor: default;
         }
 
         .chevron {
@@ -2036,7 +2035,12 @@
                     // and would otherwise dismiss the dropdown after each
                     // pick (because renderTree below detaches the node).
                     e.stopPropagation();
-                    if (isInactive) return; // inactive nodes are visual-only
+                    // Inactive nodes stay clickable. The old visual-only rule
+                    // assumed Leader Filter's domain was never team-filtered;
+                    // with datasource-scoped L2-L9 filters an apply shrinks
+                    // the domain to the picked subtree, marking everyone else
+                    // inactive — blocking their clicks made the selection
+                    // permanently stuck on the first applied leader.
                     toggleCheckNode(fId, pathStr);
                 };
                 contentDiv.querySelector('.chevron').onclick = (e) => {
