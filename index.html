@@ -148,7 +148,7 @@
         }
 
         /* Legacy selector for older code paths that build pills with a bare child span */
-        .pill>span:not(.pill-label):not(.pill-close) {
+        .pill > span:not(.pill-label):not(.pill-close) {
             margin-left: 6px;
             cursor: pointer;
             font-weight: bold;
@@ -183,8 +183,7 @@
             line-height: 1.2;
             white-space: nowrap;
             opacity: 0.75;
-            font-style: italic;
-            /* informational note */
+            font-style: italic; /* informational note */
         }
 
         .prev-period-label {
@@ -255,12 +254,10 @@
         .node-content.inactive {
             opacity: 0.45;
         }
-
         .node-content.inactive .node-text {
             font-style: italic;
             cursor: default;
         }
-
         .node-content.inactive .cb-container {
             cursor: default;
         }
@@ -400,7 +397,7 @@
             left: 0;
             right: 0;
             background: var(--bgColor, #0a2d5b);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255,255,255,0.2);
             border-radius: 6px;
             max-height: 200px;
             overflow-y: auto;
@@ -428,7 +425,7 @@
         }
 
         .ws-filter-check-item:hover {
-            background: rgba(255, 255, 255, 0.12);
+            background: rgba(255,255,255,0.12);
         }
 
         .ws-cb-native {
@@ -453,7 +450,7 @@
             border: 1px solid #d0d7de;
             border-radius: 8px;
             z-index: 2000;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
             padding: 10px;
             min-width: 224px;
             display: none;
@@ -461,18 +458,13 @@
             color: #1a1a2e;
             font-size: 12px;
         }
-
-        .date-cal-popup.open {
-            display: block;
-        }
-
+        .date-cal-popup.open { display: block; }
         .date-cal-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             margin-bottom: 8px;
         }
-
         .date-cal-nav {
             cursor: pointer;
             padding: 2px 7px;
@@ -483,30 +475,20 @@
             color: #333;
             line-height: 1.4;
         }
-
-        .date-cal-nav:hover {
-            background: #f0f4ff;
-        }
-
-        .date-cal-title {
-            font-weight: bold;
-            font-size: 13px;
-        }
-
+        .date-cal-nav:hover { background: #f0f4ff; }
+        .date-cal-title { font-weight: bold; font-size: 13px; }
         .date-cal-grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
             gap: 2px;
             text-align: center;
         }
-
         .date-cal-day-name {
             font-size: 10px;
             color: #888;
             font-weight: bold;
             padding: 3px 0;
         }
-
         .date-cal-day {
             padding: 5px 2px;
             border-radius: 4px;
@@ -514,28 +496,11 @@
             font-size: 12px;
             line-height: 1.2;
         }
-
-        .date-cal-day:hover:not(.empty) {
-            background: #dbeafe;
-        }
-
-        .date-cal-day.selected {
-            background: var(--accentColor, #22d3ee);
-            color: #000;
-            font-weight: bold;
-        }
-
-        .date-cal-day.today {
-            border: 1px solid var(--accentColor, #22d3ee);
-        }
-
-        .date-cal-day.other-month {
-            color: #c0c0c0;
-        }
-
-        .date-cal-day.empty {
-            cursor: default;
-        }
+        .date-cal-day:hover:not(.empty) { background: #dbeafe; }
+        .date-cal-day.selected { background: var(--accentColor, #22d3ee); color: #000; font-weight: bold; }
+        .date-cal-day.today { border: 1px solid var(--accentColor, #22d3ee); }
+        .date-cal-day.other-month { color: #c0c0c0; }
+        .date-cal-day.empty { cursor: default; }
 
         /* ── Sticky Apply header ── */
         .apply-bar {
@@ -552,7 +517,6 @@
             align-items: center;
             z-index: 1;
         }
-
         .apply-bar-btn {
             border: 1px solid transparent;
             border-radius: 6px;
@@ -566,35 +530,29 @@
             align-items: center;
             gap: 6px;
         }
-
         .apply-bar-btn-secondary {
             background: transparent;
             color: #475569;
             border-color: #cbd5e1;
         }
-
         .apply-bar-btn-secondary:hover {
             background: #f1f5f9;
             border-color: #94a3b8;
         }
-
         .apply-bar-btn-primary {
             background: #304674;
             color: #ffffff;
             border-color: #304674;
         }
-
         .apply-bar-btn-primary:hover:not(:disabled) {
             background: #1f2f4d;
             border-color: #1f2f4d;
         }
-
         .apply-bar-btn-primary:disabled,
         .apply-bar-btn:disabled {
             opacity: 0.45;
             cursor: not-allowed;
         }
-
         .apply-bar-btn-primary.dirty {
             background: #304674;
             box-shadow: 0 0 0 3px rgba(48, 70, 116, 0.18);
@@ -853,7 +811,7 @@
         async function registerTableauListeners() {
             // Clean up any previous listeners
             tableauListeners.forEach(unreg => {
-                try { unreg(); } catch (e) { }
+                try { unreg(); } catch (e) {}
             });
             tableauListeners = [];
 
@@ -1008,7 +966,7 @@
                             if (!isDateParam(paramObjects[p.id])) return;
                             const pn = (p.paramName || '').toLowerCase();
                             if (pn.includes('start')) pendingParams[p.id] = toUtc(startD);
-                            else if (pn.includes('end')) pendingParams[p.id] = toUtc(today);
+                            else if (pn.includes('end'))   pendingParams[p.id] = toUtc(today);
                         });
                     }
 
@@ -1051,9 +1009,9 @@
                     // Request initial extension height
                     try {
                         if (tableau && tableau.extensions && tableau.extensions.dashboardContent) {
-                            tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => { });
+                            tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => {});
                         }
-                    } catch (e) { }
+                    } catch (e) {}
 
                     // Storage Listener for Cross-Tab Sync
                     window.addEventListener('storage', (e) => {
@@ -1075,9 +1033,9 @@
         async function showConfig() {
             try {
                 if (tableau && tableau.extensions && tableau.extensions.dashboardContent) {
-                    tableau.extensions.dashboardContent.requestResizeAsync(350, 600).catch(() => { });
+                    tableau.extensions.dashboardContent.requestResizeAsync(350, 600).catch(() => {});
                 }
-            } catch (e) { }
+            } catch (e) {}
             document.getElementById('main-ui').style.display = 'none';
             document.getElementById('config-ui').style.display = 'block';
             const dashboard = tableau.extensions.dashboardContent.dashboard;
@@ -1264,7 +1222,7 @@
 
         function formatDateForDisplay(dateStr) {
             // Accepts various date formats and returns "Month DD, YYYY" (e.g., "May 26, 2026")
-            const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
             let d;
             let useUTC = false;
             if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) {
@@ -1300,7 +1258,7 @@
                 const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
                 const dd = String(d.getUTCDate()).padStart(2, '0');
                 return formatDateForDisplay(`${yyyy}-${mm}-${dd}`);
-            } catch (e) { return ''; }
+            } catch(e) { return ''; }
         }
 
         // Mirrors the workbook formula:
@@ -1322,15 +1280,15 @@
             };
 
             const startD = readVal(dateParams[0]);
-            const endD = readVal(dateParams[1]);
+            const endD   = readVal(dateParams[1]);
             if (!startD || !endD || isNaN(startD.getTime()) || isNaN(endD.getTime())) return null;
 
             const MS = 86400000;
             const startUTC = Date.UTC(startD.getUTCFullYear(), startD.getUTCMonth(), startD.getUTCDate());
-            const endUTC = Date.UTC(endD.getUTCFullYear(), endD.getUTCMonth(), endD.getUTCDate());
+            const endUTC   = Date.UTC(endD.getUTCFullYear(),   endD.getUTCMonth(),   endD.getUTCDate());
             const diff = Math.round((endUTC - startUTC) / MS);
             const prevStart = new Date(startUTC - (diff + 1) * MS);
-            const prevEnd = new Date(startUTC - MS);
+            const prevEnd   = new Date(startUTC - MS);
             return { prevStart, prevEnd };
         }
 
@@ -1346,7 +1304,7 @@
             const r = computePrevPeriodRange();
             if (!r) { if (wrapper) wrapper.style.display = 'none'; return; }
             if (wrapper) wrapper.style.display = '';
-            el.textContent = 'Compared to previous period';
+            el.textContent = 'ⓘ Compared to previous period';
         }
 
         function setupParameterInput(pConf) {
@@ -1418,7 +1376,7 @@
                         const d = new Date(v);
                         if (isNaN(d.getTime())) return null;
                         return { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate() };
-                    } catch (e) { return null; }
+                    } catch(e) { return null; }
                 }
 
                 // State for the calendar view (which month is displayed)
@@ -1428,7 +1386,7 @@
                     const sel = parseParamDate();
                     const today = new Date();
                     const todayY = today.getFullYear(), todayM = today.getMonth(), todayD = today.getDate();
-                    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
                     const firstDay = new Date(calViewYear, calViewMonth, 1).getDay(); // 0=Sun
                     const daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
                     const daysInPrev = new Date(calViewYear, calViewMonth, 0).getDate();
@@ -1496,7 +1454,7 @@
                             const y = +cell.dataset.y, m = +cell.dataset.m, d = +cell.dataset.d;
                             const newValue = new Date(Date.UTC(y, m, d));
                             cal.classList.remove('open');
-                            const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                            const iso = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                             // Deferred apply: stash the new value, update the
                             // input display so the user sees their pick, then
                             // mark the Apply bar dirty. Tableau is NOT
@@ -1562,7 +1520,7 @@
                 input.style.cursor = 'pointer';
 
                 // Initial render of options
-                try { renderParamTree(pId); } catch (e) { }
+                try { renderParamTree(pId); } catch (e) {}
                 // (Deferred apply: list-option clicks store into
                 // pendingParams via renderParamTree's onclick. No delegated
                 // afterParamChange — that would re-pull the stale Tableau
@@ -1662,7 +1620,7 @@
             clean = clean.replace(/^\[FEDERATED\.[^\]]*\]\.\s*/i, '');
             // Remove surrounding brackets
             clean = clean.replace(/^\[/, '').replace(/\]$/, '');
-
+            
             // If it's a multipart path like [Table].[Field], get the last part
             if (clean.includes('].[')) {
                 const parts = clean.split('].[');
@@ -1671,16 +1629,16 @@
                 const parts = clean.split('.');
                 clean = parts[parts.length - 1];
             }
-
+            
             // Remove Tableau internal field notation like "none:L2_FULL_NAME:nk"
             // getSummaryDataAsync on federated sources returns fieldName in this
             // format. Strip the leading "none:" (or any word prefix) and trailing
             // ":nk" (or any ":word" suffix) so "none:L2_FULL_NAME:nk" → "L2_FULL_NAME".
             clean = clean.replace(/^[a-z]+:/i, '').replace(/:[a-z]+$/i, '');
-
+            
             // Remove hash suffixes like "_252008466686362B:QK"
             clean = clean.replace(/_[A-Fa-f0-9]{10,}(?::[A-Za-z0-9]+)?$/i, '');
-
+            
             // Remove any remaining brackets
             clean = clean.replace(/^\[/, '').replace(/\]$/, '');
 
@@ -1690,7 +1648,7 @@
             // This is the key fix for federated sources where getSummaryDataAsync
             // returns the internal underscore name rather than the caption.
             clean = clean.replace(/_/g, ' ');
-
+            
             return clean.trim().toLowerCase();
         }
 
@@ -1752,293 +1710,293 @@
             if (fetchDataInProgress) return;
             fetchDataInProgress = true;
             try {
-                if (!tableau.extensions.dashboardContent) return;
-                const dashboard = tableau.extensions.dashboardContent.dashboard;
-                if (!dashboard) return;
+            if (!tableau.extensions.dashboardContent) return;
+            const dashboard = tableau.extensions.dashboardContent.dashboard;
+            if (!dashboard) return;
 
-                // ----- Parameters: refresh cached objects -----
-                try {
-                    const parameters = await dashboard.getParametersAsync();
-                    configParams.forEach(pConf => {
-                        const p = parameters.find(x => x.name === pConf.paramName);
-                        if (p) paramObjects[pConf.id] = p;
-                    });
-                } catch (e) {
-                    console.warn('Failed to refresh parameters:', e);
-                }
-
-                // ----- Hierarchies (Leaders, Gitlab, etc.) -----
-                // freshTreesData holds only the current fetch's tree per hierarchy id
-                // (before merging into the persistent cache). Used by ws filters below
-                // so they reflect the live date/tool scope, not accumulated history.
-                const freshTreesData = {};
-
-                await Promise.all(configFilters.map(async (f) => {
-                    try {
-                        const ws = dashboard.worksheets.find(w => w.name === f.sheet);
-                        if (!ws) {
-                            console.warn(`[filter-ext] Worksheet "${f.sheet}" not found for hierarchy "${f.title}". Available worksheets:`, dashboard.worksheets.map(w => w.name));
-                            return;
-                        }
-
-                        const dataTable = await ws.getSummaryDataAsync({
-                            ignoreSelection: true,
-                            maxRows: configMaxRows
-                        });
-
-                        console.log(`[filter-ext] Hierarchy "${f.title}" sheet "${f.sheet}" returned ${dataTable.data.length} rows; cols:`, dataTable.columns.map(c => c.fieldName));
-                        if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
-                            console.warn(`[filter-ext] Hierarchy "${f.title}" hit the ${configMaxRows}-row cap — the tree may be INCOMPLETE (some users/levels dropped). Raise "Max Rows per Source Read" or set it to 0.`);
-                        }
-
-                        // Build column-index list for each configured column, using the
-                        // tolerant matcher so federated/prefixed field names still resolve.
-                        const colIndexes = f.cols.map(cfgCol => {
-                            const idx = dataTable.columns.findIndex(c =>
-                                matchColumnName(cfgCol, c.fieldName, exactFieldNameMap)
-                            );
-                            if (idx >= 0) {
-                                // Cache exact internal field name for later applyFilterAsync use
-                                exactFieldNameMap[cfgCol] = dataTable.columns[idx].fieldName;
-                            }
-                            return idx;
-                        });
-
-                        // Warn about columns the worksheet doesn't expose, but
-                        // still build the tree from whatever IS present. This
-                        // keeps the hierarchy usable when a level is missing
-                        // (e.g. L3 removed from Leader Filter) — the tree just
-                        // skips that level rather than refusing to build at all.
-                        const missingCols = f.cols.filter((_, i) => colIndexes[i] < 0);
-                        if (missingCols.length) {
-                            console.warn(
-                                `[filter-ext] Hierarchy "${f.title}" missing columns:`,
-                                missingCols,
-                                '— building tree from available levels only. Available:',
-                                dataTable.columns.map(c => c.fieldName)
-                            );
-                        }
-
-                        const presentColsWithIdx = f.cols
-                            .map((col, i) => ({ col, idx: colIndexes[i] }))
-                            .filter(x => x.idx >= 0);
-
-                        if (presentColsWithIdx.length === 0) {
-                            console.warn(`[filter-ext] Hierarchy "${f.title}" has NO matching columns at all. Skipping.`);
-                            return;
-                        }
-
-                        // Remember the effective column list (only the levels
-                        // actually in the tree) so applyAllFilters can map tree
-                        // depth back to the correct field name.
-                        effectiveColsMap[f.id] = presentColsWithIdx.map(x => x.col);
-
-                        // Build nested tree: { L1value: { L2value: { ... } } }
-                        const tree = {};
-                        dataTable.data.forEach(row => {
-                            let node = tree;
-                            for (let i = 0; i < presentColsWithIdx.length; i++) {
-                                const cell = row[presentColsWithIdx[i].idx];
-                                const key = (cell && cell.formattedValue) || '';
-                                if (!key || key === 'Null') return; // skip nulls in the path
-                                if (!node[key]) node[key] = {};
-                                node = node[key];
-                            }
-                        });
-
-                        // Keep the fresh (unmerged) tree for ws-filter derivation below.
-                        // The MASTER tree (per-hierarchy union of all users ever
-                        // seen) is what the UI renders, so users who were active
-                        // under earlier filters stay visible (unchecked) when
-                        // filters narrow. The ACTIVE tree (just this fetch) is
-                        // what determines who's currently auto-selectable.
-                        freshTreesData[f.id] = tree;
-                        activeTreesData[f.id] = tree;
-                        if (!masterTreesData[f.id]) masterTreesData[f.id] = {};
-                        mergeTree(masterTreesData[f.id], tree);
-                        treesData[f.id] = masterTreesData[f.id];
-
-                        console.log(`[filter-ext] Hierarchy "${f.title}" built: ${Object.keys(tree).length} top-level keys; master now has ${Object.keys(masterTreesData[f.id]).length} top-level keys.`);
-
-                        const activePaths = getAllPaths(tree);
-                        const masterPathsSet = new Set(getAllPaths(masterTreesData[f.id]));
-                        const currentSel = selectedPathsMap[f.id] || [];
-
-                        // hadExplicitPicks: user has made a real selection (not a
-                        // sentinel and not the full default-all set). When true,
-                        // a date/tool change must preserve the pick — the user
-                        // already narrowed to specific leaders and re-snapping to
-                        // "all active" would clobber that. Grey-out for inactive
-                        // members still updates because activeTreesData is
-                        // refreshed above regardless of selection behavior.
-                        const prevExplicit = explicitPathsMap[f.id] || [];
-                        const hadExplicitPicks = prevExplicit.length > 0
-                            && !(prevExplicit.length === 1 && (prevExplicit[0] === '___NONE___' || prevExplicit[0] === '___CANCELLED___'));
-
-                        if (!firstFetchDone[f.id]) {
-                            // First open: default to all active leaders.
-                            selectedPathsMap[f.id] = activePaths;
-                            explicitPathsMap[f.id] = Object.keys(tree || {});
-                            firstFetchDone[f.id] = true;
-                        } else if (autoSelect && !hadExplicitPicks) {
-                            // Scope change (date/tool) with NO explicit pick:
-                            // snap to all currently-active so checkboxes reflect
-                            // "who has data now".
-                            selectedPathsMap[f.id] = activePaths;
-                            explicitPathsMap[f.id] = Object.keys(tree || {});
-                        } else {
-                            // Either:
-                            //   • Manual toggle / post-apply refresh (autoSelect false), OR
-                            //   • Scope change WITH an explicit pick (autoSelect true).
-                            // Preserve the user's explicit picks; only drop paths
-                            // that no longer exist in the master tree. Sentinels
-                            // (Cancel All) survive untouched.
-                            const hadSentinel = currentSel.length === 1
-                                && (currentSel[0] === '___NONE___' || currentSel[0] === '___CANCELLED___');
-                            explicitPathsMap[f.id] = prevExplicit
-                                .filter(p => masterPathsSet.has(p));
-                            if (hadSentinel && explicitPathsMap[f.id].length === 0) {
-                                // Cancel All / NONE: keep the sentinel verbatim so
-                                // _applyFilterStateToTableau still emits the block-all
-                                // filter.
-                                selectedPathsMap[f.id] = [currentSel[0]];
-                            } else {
-                                // Rebuild selectedPathsMap from the (preserved) explicit
-                                // picks against the CURRENT master tree. Critical when
-                                // a scope change (e.g. Windsurf→Gemini) merged new
-                                // L3-L9 descendants into the master under leaders we
-                                // already had explicit: a plain filter of the stale
-                                // selectedPathsMap would leave those descendants
-                                // unselected, and _applyFilterStateToTableau's walk
-                                // would then emit a restrictive partial-selection
-                                // filter at L3-L9 that hides leaders whose only
-                                // matching children are the newly-merged ones.
-                                recomputeSelectedFromExplicit(f.id);
-                            }
-                        }
-                    } catch (err) {
-                        console.error(`Error loading hierarchy "${f.title}":`, err);
-                    }
-
-                    // Re-render this hierarchy's UI
-                    try { renderPills(f.id); } catch (e) { }
-                    try { renderTree(f.id); } catch (e) { }
-                }));
-
-                // ----- Worksheet filters (Team, etc.) -----
-                for (const wf of configWsFilters) {
-                    try {
-                        const ws = dashboard.worksheets.find(w => w.name === wf.sheet);
-                        if (!ws) {
-                            console.warn(`Worksheet "${wf.sheet}" not found for filter "${wf.title}"`);
-                            wsFiltersData[wf.id] = [];
-                            continue;
-                        }
-
-                        let allValues = [];
-
-                        // Path 1: derive values from the fresh (current-fetch) hierarchy tree
-                        // whose root column matches this ws filter's column. freshTreesData
-                        // holds only rows returned for the current date/tool range — it is
-                        // NOT merged with historical data, so stale leaders from past date
-                        // ranges never bleed into the filter list.
-                        const matchedHierarchy = configFilters.find(f =>
-                            f.cols && f.cols.length > 0 &&
-                            getCleanFieldName(f.cols[0]) === getCleanFieldName(wf.col) &&
-                            freshTreesData[f.id] && Object.keys(freshTreesData[f.id]).length > 0
-                        );
-                        if (matchedHierarchy) {
-                            allValues = Object.keys(freshTreesData[matchedHierarchy.id]);
-                        }
-
-                        // Path 2: if no matching hierarchy, fetch distinct values from the
-                        // ws filter's configured worksheet summary data (respects date/tool
-                        // filters applied to that worksheet).
-                        if (!allValues.length) {
-                            try {
-                                const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
-                                if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
-                                    console.warn(`[filter-ext] Worksheet filter "${wf.title}" hit the ${configMaxRows}-row cap reading "${wf.sheet}" — the value list may be INCOMPLETE. Raise "Max Rows per Source Read" or set it to 0.`);
-                                }
-                                const colIdx = dataTable.columns.findIndex(c =>
-                                    matchColumnName(wf.col, c.fieldName, exactFieldNameMap)
-                                );
-                                if (colIdx >= 0) {
-                                    exactFieldNameMap[wf.col] = dataTable.columns[colIdx].fieldName;
-                                    const seen = new Set();
-                                    dataTable.data.forEach(row => {
-                                        const v = row[colIdx] && row[colIdx].formattedValue;
-                                        if (v && v !== 'Null' && v !== '') seen.add(v);
-                                    });
-                                    allValues = Array.from(seen);
-                                } else {
-                                    console.warn(
-                                        `Column "${wf.col}" not found in worksheet "${wf.sheet}". ` +
-                                        `Available: ${dataTable.columns.map(c => c.fieldName).join(', ')}`
-                                    );
-                                }
-                            } catch (e2) {
-                                console.warn(`getSummaryDataAsync failed for "${wf.sheet}":`, e2);
-                            }
-                        }
-
-                        // Path 3: last resort — filter domain from the Filters shelf.
-                        if (!allValues.length) {
-                            try {
-                                const filters = await ws.getFiltersAsync();
-                                const matchedFilter = filters.find(flt =>
-                                    matchColumnName(wf.col, flt.fieldName, exactFieldNameMap)
-                                );
-                                if (matchedFilter) {
-                                    exactFieldNameMap[wf.col] = matchedFilter.fieldName;
-                                    let domain = null;
-                                    try {
-                                        domain = await matchedFilter.getDomainAsync(tableau.FilterDomainType.Relevant);
-                                    } catch (e1) {
-                                        try { domain = await matchedFilter.getDomainAsync(tableau.FilterDomainType.Database); }
-                                        catch (e2) { console.warn('Filter domain fetch failed:', e2); }
-                                    }
-                                    if (domain && Array.isArray(domain.values)) {
-                                        allValues = domain.values
-                                            .map(v => v.formattedValue)
-                                            .filter(v => v && v !== 'Null' && v !== '');
-                                    }
-                                }
-                            } catch (e) {
-                                console.warn(`getFiltersAsync failed for "${wf.sheet}":`, e);
-                            }
-                        }
-
-                        allValues.sort((a, b) => a.localeCompare(b));
-                        wsFiltersData[wf.id] = allValues;
-
-                        if (allValues.length) {
-                            const current = selectedWsPathsMap[wf.id];
-                            if (!current || current.length === 0) {
-                                // No saved selection — default to all values selected
-                                selectedWsPathsMap[wf.id] = [...allValues];
-                            } else {
-                                // Prune selections no longer valid in the current domain
-                                const valid = new Set(allValues);
-                                selectedWsPathsMap[wf.id] = current.filter(
-                                    v => v === '___NONE___' || valid.has(v)
-                                );
-                            }
-                        }
-                    } catch (err) {
-                        console.error(`Error loading worksheet filter "${wf.title}":`, err);
-                        wsFiltersData[wf.id] = [];
-                    }
-
-                    // Re-render this filter's UI so dropdown + pills reflect new domain.
-                    try { renderWsTree(wf.id); } catch (e) { console.warn('renderWsTree failed:', e); }
-                    try { renderWsPills(wf.id); } catch (e) { console.warn('renderWsPills failed:', e); }
-                }
-
-                // Refresh parameter pills (their displayed values may have changed).
-                configParams.forEach(p => {
-                    try { renderParamPill(p.id); } catch (e) { }
+            // ----- Parameters: refresh cached objects -----
+            try {
+                const parameters = await dashboard.getParametersAsync();
+                configParams.forEach(pConf => {
+                    const p = parameters.find(x => x.name === pConf.paramName);
+                    if (p) paramObjects[pConf.id] = p;
                 });
+            } catch (e) {
+                console.warn('Failed to refresh parameters:', e);
+            }
+
+            // ----- Hierarchies (Leaders, Gitlab, etc.) -----
+            // freshTreesData holds only the current fetch's tree per hierarchy id
+            // (before merging into the persistent cache). Used by ws filters below
+            // so they reflect the live date/tool scope, not accumulated history.
+            const freshTreesData = {};
+
+            await Promise.all(configFilters.map(async (f) => {
+                try {
+                    const ws = dashboard.worksheets.find(w => w.name === f.sheet);
+                    if (!ws) {
+                        console.warn(`[filter-ext] Worksheet "${f.sheet}" not found for hierarchy "${f.title}". Available worksheets:`, dashboard.worksheets.map(w => w.name));
+                        return;
+                    }
+
+                    const dataTable = await ws.getSummaryDataAsync({
+                        ignoreSelection: true,
+                        maxRows: configMaxRows
+                    });
+
+                    console.log(`[filter-ext] Hierarchy "${f.title}" sheet "${f.sheet}" returned ${dataTable.data.length} rows; cols:`, dataTable.columns.map(c => c.fieldName));
+                    if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
+                        console.warn(`[filter-ext] Hierarchy "${f.title}" hit the ${configMaxRows}-row cap — the tree may be INCOMPLETE (some users/levels dropped). Raise "Max Rows per Source Read" or set it to 0.`);
+                    }
+
+                    // Build column-index list for each configured column, using the
+                    // tolerant matcher so federated/prefixed field names still resolve.
+                    const colIndexes = f.cols.map(cfgCol => {
+                        const idx = dataTable.columns.findIndex(c =>
+                            matchColumnName(cfgCol, c.fieldName, exactFieldNameMap)
+                        );
+                        if (idx >= 0) {
+                            // Cache exact internal field name for later applyFilterAsync use
+                            exactFieldNameMap[cfgCol] = dataTable.columns[idx].fieldName;
+                        }
+                        return idx;
+                    });
+
+                    // Warn about columns the worksheet doesn't expose, but
+                    // still build the tree from whatever IS present. This
+                    // keeps the hierarchy usable when a level is missing
+                    // (e.g. L3 removed from Leader Filter) — the tree just
+                    // skips that level rather than refusing to build at all.
+                    const missingCols = f.cols.filter((_, i) => colIndexes[i] < 0);
+                    if (missingCols.length) {
+                        console.warn(
+                            `[filter-ext] Hierarchy "${f.title}" missing columns:`,
+                            missingCols,
+                            '— building tree from available levels only. Available:',
+                            dataTable.columns.map(c => c.fieldName)
+                        );
+                    }
+
+                    const presentColsWithIdx = f.cols
+                        .map((col, i) => ({ col, idx: colIndexes[i] }))
+                        .filter(x => x.idx >= 0);
+
+                    if (presentColsWithIdx.length === 0) {
+                        console.warn(`[filter-ext] Hierarchy "${f.title}" has NO matching columns at all. Skipping.`);
+                        return;
+                    }
+
+                    // Remember the effective column list (only the levels
+                    // actually in the tree) so applyAllFilters can map tree
+                    // depth back to the correct field name.
+                    effectiveColsMap[f.id] = presentColsWithIdx.map(x => x.col);
+
+                    // Build nested tree: { L1value: { L2value: { ... } } }
+                    const tree = {};
+                    dataTable.data.forEach(row => {
+                        let node = tree;
+                        for (let i = 0; i < presentColsWithIdx.length; i++) {
+                            const cell = row[presentColsWithIdx[i].idx];
+                            const key = (cell && cell.formattedValue) || '';
+                            if (!key || key === 'Null') return; // skip nulls in the path
+                            if (!node[key]) node[key] = {};
+                            node = node[key];
+                        }
+                    });
+
+                    // Keep the fresh (unmerged) tree for ws-filter derivation below.
+                    // The MASTER tree (per-hierarchy union of all users ever
+                    // seen) is what the UI renders, so users who were active
+                    // under earlier filters stay visible (unchecked) when
+                    // filters narrow. The ACTIVE tree (just this fetch) is
+                    // what determines who's currently auto-selectable.
+                    freshTreesData[f.id] = tree;
+                    activeTreesData[f.id] = tree;
+                    if (!masterTreesData[f.id]) masterTreesData[f.id] = {};
+                    mergeTree(masterTreesData[f.id], tree);
+                    treesData[f.id] = masterTreesData[f.id];
+
+                    console.log(`[filter-ext] Hierarchy "${f.title}" built: ${Object.keys(tree).length} top-level keys; master now has ${Object.keys(masterTreesData[f.id]).length} top-level keys.`);
+
+                    const activePaths = getAllPaths(tree);
+                    const masterPathsSet = new Set(getAllPaths(masterTreesData[f.id]));
+                    const currentSel = selectedPathsMap[f.id] || [];
+
+                    // hadExplicitPicks: user has made a real selection (not a
+                    // sentinel and not the full default-all set). When true,
+                    // a date/tool change must preserve the pick — the user
+                    // already narrowed to specific leaders and re-snapping to
+                    // "all active" would clobber that. Grey-out for inactive
+                    // members still updates because activeTreesData is
+                    // refreshed above regardless of selection behavior.
+                    const prevExplicit = explicitPathsMap[f.id] || [];
+                    const hadExplicitPicks = prevExplicit.length > 0
+                        && !(prevExplicit.length === 1 && (prevExplicit[0] === '___NONE___' || prevExplicit[0] === '___CANCELLED___'));
+
+                    if (!firstFetchDone[f.id]) {
+                        // First open: default to all active leaders.
+                        selectedPathsMap[f.id] = activePaths;
+                        explicitPathsMap[f.id] = Object.keys(tree || {});
+                        firstFetchDone[f.id] = true;
+                    } else if (autoSelect && !hadExplicitPicks) {
+                        // Scope change (date/tool) with NO explicit pick:
+                        // snap to all currently-active so checkboxes reflect
+                        // "who has data now".
+                        selectedPathsMap[f.id] = activePaths;
+                        explicitPathsMap[f.id] = Object.keys(tree || {});
+                    } else {
+                        // Either:
+                        //   • Manual toggle / post-apply refresh (autoSelect false), OR
+                        //   • Scope change WITH an explicit pick (autoSelect true).
+                        // Preserve the user's explicit picks; only drop paths
+                        // that no longer exist in the master tree. Sentinels
+                        // (Cancel All) survive untouched.
+                        const hadSentinel = currentSel.length === 1
+                            && (currentSel[0] === '___NONE___' || currentSel[0] === '___CANCELLED___');
+                        explicitPathsMap[f.id] = prevExplicit
+                            .filter(p => masterPathsSet.has(p));
+                        if (hadSentinel && explicitPathsMap[f.id].length === 0) {
+                            // Cancel All / NONE: keep the sentinel verbatim so
+                            // _applyFilterStateToTableau still emits the block-all
+                            // filter.
+                            selectedPathsMap[f.id] = [currentSel[0]];
+                        } else {
+                            // Rebuild selectedPathsMap from the (preserved) explicit
+                            // picks against the CURRENT master tree. Critical when
+                            // a scope change (e.g. Windsurf→Gemini) merged new
+                            // L3-L9 descendants into the master under leaders we
+                            // already had explicit: a plain filter of the stale
+                            // selectedPathsMap would leave those descendants
+                            // unselected, and _applyFilterStateToTableau's walk
+                            // would then emit a restrictive partial-selection
+                            // filter at L3-L9 that hides leaders whose only
+                            // matching children are the newly-merged ones.
+                            recomputeSelectedFromExplicit(f.id);
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Error loading hierarchy "${f.title}":`, err);
+                }
+
+                // Re-render this hierarchy's UI
+                try { renderPills(f.id); } catch (e) {}
+                try { renderTree(f.id); } catch (e) {}
+            }));
+
+            // ----- Worksheet filters (Team, etc.) -----
+            for (const wf of configWsFilters) {
+                try {
+                    const ws = dashboard.worksheets.find(w => w.name === wf.sheet);
+                    if (!ws) {
+                        console.warn(`Worksheet "${wf.sheet}" not found for filter "${wf.title}"`);
+                        wsFiltersData[wf.id] = [];
+                        continue;
+                    }
+
+                    let allValues = [];
+
+                    // Path 1: derive values from the fresh (current-fetch) hierarchy tree
+                    // whose root column matches this ws filter's column. freshTreesData
+                    // holds only rows returned for the current date/tool range — it is
+                    // NOT merged with historical data, so stale leaders from past date
+                    // ranges never bleed into the filter list.
+                    const matchedHierarchy = configFilters.find(f =>
+                        f.cols && f.cols.length > 0 &&
+                        getCleanFieldName(f.cols[0]) === getCleanFieldName(wf.col) &&
+                        freshTreesData[f.id] && Object.keys(freshTreesData[f.id]).length > 0
+                    );
+                    if (matchedHierarchy) {
+                        allValues = Object.keys(freshTreesData[matchedHierarchy.id]);
+                    }
+
+                    // Path 2: if no matching hierarchy, fetch distinct values from the
+                    // ws filter's configured worksheet summary data (respects date/tool
+                    // filters applied to that worksheet).
+                    if (!allValues.length) {
+                        try {
+                            const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
+                            if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
+                                console.warn(`[filter-ext] Worksheet filter "${wf.title}" hit the ${configMaxRows}-row cap reading "${wf.sheet}" — the value list may be INCOMPLETE. Raise "Max Rows per Source Read" or set it to 0.`);
+                            }
+                            const colIdx = dataTable.columns.findIndex(c =>
+                                matchColumnName(wf.col, c.fieldName, exactFieldNameMap)
+                            );
+                            if (colIdx >= 0) {
+                                exactFieldNameMap[wf.col] = dataTable.columns[colIdx].fieldName;
+                                const seen = new Set();
+                                dataTable.data.forEach(row => {
+                                    const v = row[colIdx] && row[colIdx].formattedValue;
+                                    if (v && v !== 'Null' && v !== '') seen.add(v);
+                                });
+                                allValues = Array.from(seen);
+                            } else {
+                                console.warn(
+                                    `Column "${wf.col}" not found in worksheet "${wf.sheet}". ` +
+                                    `Available: ${dataTable.columns.map(c => c.fieldName).join(', ')}`
+                                );
+                            }
+                        } catch (e2) {
+                            console.warn(`getSummaryDataAsync failed for "${wf.sheet}":`, e2);
+                        }
+                    }
+
+                    // Path 3: last resort — filter domain from the Filters shelf.
+                    if (!allValues.length) {
+                        try {
+                            const filters = await ws.getFiltersAsync();
+                            const matchedFilter = filters.find(flt =>
+                                matchColumnName(wf.col, flt.fieldName, exactFieldNameMap)
+                            );
+                            if (matchedFilter) {
+                                exactFieldNameMap[wf.col] = matchedFilter.fieldName;
+                                let domain = null;
+                                try {
+                                    domain = await matchedFilter.getDomainAsync(tableau.FilterDomainType.Relevant);
+                                } catch (e1) {
+                                    try { domain = await matchedFilter.getDomainAsync(tableau.FilterDomainType.Database); }
+                                    catch (e2) { console.warn('Filter domain fetch failed:', e2); }
+                                }
+                                if (domain && Array.isArray(domain.values)) {
+                                    allValues = domain.values
+                                        .map(v => v.formattedValue)
+                                        .filter(v => v && v !== 'Null' && v !== '');
+                                }
+                            }
+                        } catch (e) {
+                            console.warn(`getFiltersAsync failed for "${wf.sheet}":`, e);
+                        }
+                    }
+
+                    allValues.sort((a, b) => a.localeCompare(b));
+                    wsFiltersData[wf.id] = allValues;
+
+                    if (allValues.length) {
+                        const current = selectedWsPathsMap[wf.id];
+                        if (!current || current.length === 0) {
+                            // No saved selection — default to all values selected
+                            selectedWsPathsMap[wf.id] = [...allValues];
+                        } else {
+                            // Prune selections no longer valid in the current domain
+                            const valid = new Set(allValues);
+                            selectedWsPathsMap[wf.id] = current.filter(
+                                v => v === '___NONE___' || valid.has(v)
+                            );
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Error loading worksheet filter "${wf.title}":`, err);
+                    wsFiltersData[wf.id] = [];
+                }
+
+                // Re-render this filter's UI so dropdown + pills reflect new domain.
+                try { renderWsTree(wf.id); } catch (e) { console.warn('renderWsTree failed:', e); }
+                try { renderWsPills(wf.id); } catch (e) { console.warn('renderWsPills failed:', e); }
+            }
+
+            // Refresh parameter pills (their displayed values may have changed).
+            configParams.forEach(p => {
+                try { renderParamPill(p.id); } catch (e) {}
+            });
             } finally {
                 fetchDataInProgress = false;
             }
@@ -2356,16 +2314,16 @@
             const trigger = document.getElementById('ws-trigger-' + wfId);
             const popover = document.getElementById('ws-popover-' + wfId);
             if (!trigger || !popover) return;
-
+            
             const isOpen = popover.classList.contains('open');
-
+            
             // Close any open hierarchy/param popups
             if (activePopupId) {
                 const p = document.getElementById(activePopupId);
                 if (p) p.style.display = 'none';
                 activePopupId = null;
             }
-
+            
             // Close other ws popovers
             configWsFilters.forEach(wf => {
                 if (wf.id !== wfId) {
@@ -2390,12 +2348,12 @@
             try {
                 if (tableau && tableau.extensions && tableau.extensions.dashboardContent) {
                     if (activeWsPopoverId) {
-                        tableau.extensions.dashboardContent.requestResizeAsync(250, 360).catch(() => { });
+                        tableau.extensions.dashboardContent.requestResizeAsync(250, 360).catch(() => {});
                     } else {
-                        tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => { });
+                        tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => {});
                     }
                 }
-            } catch (e) { }
+            } catch (e) {}
         }
 
         document.addEventListener('click', (e) => {
@@ -2416,9 +2374,9 @@
                     activePopupId = null;
                     try {
                         if (tableau && tableau.extensions && tableau.extensions.dashboardContent) {
-                            tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => { });
+                            tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => {});
                         }
-                    } catch (err) { }
+                    } catch (err) {}
                 }
             }
 
@@ -2444,9 +2402,9 @@
                     activeWsPopoverId = null;
                     try {
                         if (tableau && tableau.extensions && tableau.extensions.dashboardContent) {
-                            tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => { });
+                            tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => {});
                         }
-                    } catch (err) { }
+                    } catch (err) {}
                 }
             }
         });
@@ -2568,9 +2526,12 @@
                         if (p && p !== '___NONE___' && p !== '___CANCELLED___') explicit.push(p);
                     });
                 });
-                tableau.extensions.settings.set('teamExplicitPaths', JSON.stringify(explicit));
-                tableau.extensions.settings.set('teamSelectionStamp', String(Date.now()));
-                await tableau.extensions.settings.saveAsync();
+                // NOTE: the old 'teamExplicitPaths'/'teamSelectionStamp' settings
+                // writes were removed entirely. They were an audit log nothing
+                // reads (settings never cross extension instances), yet each
+                // apply paid a 1.2-1.4s save-add-in-settings round trip for
+                // them — and because the vizql session serializes commands,
+                // even a fire-and-forget save still blocked the queue.
                 // The REAL cross-extension write: await it so the new pickset is
                 // committed to the 'Hierarchy Sync' parameter BEFORE
                 // applyFilterAsync fires FilterChanged events that trigger the
@@ -2961,9 +2922,9 @@
                 try {
                     if (tableau && tableau.extensions && tableau.extensions.dashboardContent) {
                         tableau.extensions.dashboardContent
-                            .requestResizeAsync(250, 150).catch(() => { });
+                            .requestResizeAsync(250, 150).catch(() => {});
                     }
-                } catch (_) { }
+                } catch (_) {}
             }
         }
 
@@ -2979,97 +2940,97 @@
             // released (filterApplyActive cleared) even if a step below throws.
             try {
 
-                // Tell the tree extension to hold off fetching while we apply
-                // filters in multiple phases. Without this, each phase's batch of
-                // applyFilterAsync calls triggers a separate 20s+ Snowflake query
-                // in the tree extension. The flag is cleared (and tree ext
-                // releases suppress + does one final fetch) after Phase 2 below.
-                // Sent via the 'Hierarchy Sync' parameter — settings.set/saveAsync
-                // never reached the tree extension (settings are per-instance).
-                await writeSyncParam({ applyActive: '1' });
+            // Tell the tree extension to hold off fetching while we apply
+            // filters in multiple phases. Without this, each phase's batch of
+            // applyFilterAsync calls triggers a separate 20s+ Snowflake query
+            // in the tree extension. The flag is cleared (and tree ext
+            // releases suppress + does one final fetch) after Phase 2 below.
+            // Sent via the 'Hierarchy Sync' parameter — settings.set/saveAsync
+            // never reached the tree extension (settings are per-instance).
+            await writeSyncParam({ applyActive: '1' });
 
-                // Scope change (date param or TOOL): some worksheets must re-apply
-                // their existing filter values even when those values are unchanged,
-                // because a parameter change alone (changeValueAsync) doesn't reliably
-                // kick KPI tiles into recomputing — re-applying the filter is what
-                // forces the refresh. Columns whose VALUES actually changed (e.g. the
-                // auto-selected team) re-apply on their own via the signature cache,
-                // so we only need to force the unchanged-value case here.
-                //
-                // Surgical: if the user listed the scope-dependent KPI worksheets in
-                // 'forceRefreshSheets', drop ONLY those worksheets' cache entries so
-                // they re-apply; every other worksheet keeps its dedup cache and is
-                // not needlessly re-filtered (no wasted live-source re-query). When
-                // the list is empty, fall back to wiping the whole cache so no KPI
-                // tile can silently go stale.
-                if (autoSelectActive) {
-                    const forcePatterns = (configForceRefreshSheets || [])
-                        .map(s => (s || '').trim().toLowerCase())
-                        .filter(Boolean);
-                    if (forcePatterns.length === 0) {
-                        lastAppliedFilterState = {};
-                    } else {
-                        const matchesForce = (wsName) => {
-                            const lower = (wsName || '').toLowerCase();
-                            return forcePatterns.some(p => lower === p || lower.includes(p));
-                        };
-                        Object.keys(lastAppliedFilterState).forEach(key => {
-                            const wsName = key.split('::')[0];
-                            if (matchesForce(wsName)) delete lastAppliedFilterState[key];
-                        });
-                    }
+            // Scope change (date param or TOOL): some worksheets must re-apply
+            // their existing filter values even when those values are unchanged,
+            // because a parameter change alone (changeValueAsync) doesn't reliably
+            // kick KPI tiles into recomputing — re-applying the filter is what
+            // forces the refresh. Columns whose VALUES actually changed (e.g. the
+            // auto-selected team) re-apply on their own via the signature cache,
+            // so we only need to force the unchanged-value case here.
+            //
+            // Surgical: if the user listed the scope-dependent KPI worksheets in
+            // 'forceRefreshSheets', drop ONLY those worksheets' cache entries so
+            // they re-apply; every other worksheet keeps its dedup cache and is
+            // not needlessly re-filtered (no wasted live-source re-query). When
+            // the list is empty, fall back to wiping the whole cache so no KPI
+            // tile can silently go stale.
+            if (autoSelectActive) {
+                const forcePatterns = (configForceRefreshSheets || [])
+                    .map(s => (s || '').trim().toLowerCase())
+                    .filter(Boolean);
+                if (forcePatterns.length === 0) {
+                    lastAppliedFilterState = {};
+                } else {
+                    const matchesForce = (wsName) => {
+                        const lower = (wsName || '').toLowerCase();
+                        return forcePatterns.some(p => lower === p || lower.includes(p));
+                    };
+                    Object.keys(lastAppliedFilterState).forEach(key => {
+                        const wsName = key.split('::')[0];
+                        if (matchesForce(wsName)) delete lastAppliedFilterState[key];
+                    });
                 }
+            }
 
-                // PHASE 1 (only when autoSelectActive): apply WS filters / params
-                // to the dashboard WITHOUT the hierarchy filter, then re-query the
-                // Leader Filter worksheet to find users with activity in the new
-                // date/tool window, and auto-select them. This makes Team
-                // checkboxes reflect "who has data right now" after any external
-                // change.
-                if (autoSelectActive) {
-                    suppressRefetchFor(30000);
-                    try {
-                        // Restrict Phase 1 to the worksheets the auto-select refetch
-                        // actually re-reads (hierarchy + ws-filter source sheets), so
-                        // dual-column downstream sheets aren't re-queried here only to
-                        // be re-queried again in Phase 2. Phase 2 (no restriction)
-                        // applies the full filter set to every sheet exactly as before.
-                        const phase1Sheets = new Set([
-                            ...configFilters.map(f => f.sheet),
-                            ...configWsFilters.map(wf => wf.sheet),
-                        ].filter(Boolean));
-                        await _applyFilterStateToTableau(false, phase1Sheets);
-                    } catch (e) {
-                        console.warn('[filter-ext] phase-1 apply failed:', e);
-                    }
-                    try {
-                        await fetchDataAndRender({ autoSelect: true });
-                    } catch (e) {
-                        console.warn('[filter-ext] phase-1 refetch failed:', e);
-                    }
-                }
-
-                // PHASE 2: apply everything, using the (possibly just-refreshed)
-                // hierarchy selection. Suppress our own FilterChanged events so the
-                // resulting cascade doesn't trigger N redundant refetches.
+            // PHASE 1 (only when autoSelectActive): apply WS filters / params
+            // to the dashboard WITHOUT the hierarchy filter, then re-query the
+            // Leader Filter worksheet to find users with activity in the new
+            // date/tool window, and auto-select them. This makes Team
+            // checkboxes reflect "who has data right now" after any external
+            // change.
+            if (autoSelectActive) {
                 suppressRefetchFor(30000);
-                saveStateToStorage();
-                configFilters.forEach(f => { renderPills(f.id); renderTree(f.id); });
-                configWsFilters.forEach(wf => { renderWsPills(wf.id); renderWsTree(wf.id); });
-
-                // Persist the current pickset to this extension's settings so it
-                // survives a reload. The tree extension can't read it (settings
-                // don't cross extension instances) — it gets filtered data
-                // directly via applyFilterAsync below.
-                await syncSelectionToSettings();
-
                 try {
-                    await _applyFilterStateToTableau(true);
+                    // Restrict Phase 1 to the worksheets the auto-select refetch
+                    // actually re-reads (hierarchy + ws-filter source sheets), so
+                    // dual-column downstream sheets aren't re-queried here only to
+                    // be re-queried again in Phase 2. Phase 2 (no restriction)
+                    // applies the full filter set to every sheet exactly as before.
+                    const phase1Sheets = new Set([
+                        ...configFilters.map(f => f.sheet),
+                        ...configWsFilters.map(wf => wf.sheet),
+                    ].filter(Boolean));
+                    await _applyFilterStateToTableau(false, phase1Sheets);
                 } catch (e) {
-                    console.warn('[filter-ext] phase-2 apply failed:', e);
+                    console.warn('[filter-ext] phase-1 apply failed:', e);
                 }
+                try {
+                    await fetchDataAndRender({ autoSelect: true });
+                } catch (e) {
+                    console.warn('[filter-ext] phase-1 refetch failed:', e);
+                }
+            }
 
-                // All phases done.
+            // PHASE 2: apply everything, using the (possibly just-refreshed)
+            // hierarchy selection. Suppress our own FilterChanged events so the
+            // resulting cascade doesn't trigger N redundant refetches.
+            suppressRefetchFor(30000);
+            saveStateToStorage();
+            configFilters.forEach(f => { renderPills(f.id); renderTree(f.id); });
+            configWsFilters.forEach(wf => { renderWsPills(wf.id); renderWsTree(wf.id); });
+
+            // Persist the current pickset to this extension's settings so it
+            // survives a reload. The tree extension can't read it (settings
+            // don't cross extension instances) — it gets filtered data
+            // directly via applyFilterAsync below.
+            await syncSelectionToSettings();
+
+            try {
+                await _applyFilterStateToTableau(true);
+            } catch (e) {
+                console.warn('[filter-ext] phase-2 apply failed:', e);
+            }
+
+            // All phases done.
             } finally {
                 // ALWAYS release the tree extension — even if a step above threw —
                 // so it lifts its suppress hold and does its single final fetch.
@@ -3092,7 +3053,7 @@
                 try {
                     await new Promise(resolve => setTimeout(resolve, 800));
                     await writeSyncParam({ applyActive: '' });
-                } catch (_) { }
+                } catch (_) {}
                 isApplyingFilters = false;
             }
 
@@ -3411,12 +3372,12 @@
             try {
                 if (tableau && tableau.extensions && tableau.extensions.dashboardContent) {
                     if (activePopupId) {
-                        tableau.extensions.dashboardContent.requestResizeAsync(250, 360).catch(() => { });
+                        tableau.extensions.dashboardContent.requestResizeAsync(250, 360).catch(() => {});
                     } else {
-                        tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => { });
+                        tableau.extensions.dashboardContent.requestResizeAsync(250, 150).catch(() => {});
                     }
                 }
-            } catch (e) { }
+            } catch (e) {}
         }
         function saveStateToStorage() {
             // Save by column key (e.g. "L2 (VP),L3 (Manager),L4 (IC)") instead of filter ID
@@ -3483,25 +3444,25 @@
                 } catch (e) { console.warn('Error loading state:', e); }
             }
         }
-        function getContrastYIQ(hexcolor) {
+        function getContrastYIQ(hexcolor){
             if (!hexcolor || hexcolor === 'transparent') return '#333333';
             let r, g, b;
             if (hexcolor.startsWith('#')) {
                 const cleanHex = hexcolor.replace('#', '');
                 if (cleanHex.length === 3) {
-                    r = parseInt(cleanHex.substr(0, 1) + cleanHex.substr(0, 1), 16);
-                    g = parseInt(cleanHex.substr(1, 1) + cleanHex.substr(1, 1), 16);
-                    b = parseInt(cleanHex.substr(2, 1) + cleanHex.substr(2, 1), 16);
+                    r = parseInt(cleanHex.substr(0,1) + cleanHex.substr(0,1), 16);
+                    g = parseInt(cleanHex.substr(1,1) + cleanHex.substr(1,1), 16);
+                    b = parseInt(cleanHex.substr(2,1) + cleanHex.substr(2,1), 16);
                 } else {
-                    r = parseInt(cleanHex.substr(0, 2), 16);
-                    g = parseInt(cleanHex.substr(2, 2), 16);
-                    b = parseInt(cleanHex.substr(4, 2), 16);
+                    r = parseInt(cleanHex.substr(0,2), 16);
+                    g = parseInt(cleanHex.substr(2,2), 16);
+                    b = parseInt(cleanHex.substr(4,2), 16);
                 }
             } else {
                 return '#ffffff';
             }
             if (isNaN(r) || isNaN(g) || isNaN(b)) return '#ffffff';
-            const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+            const yiq = ((r*299)+(g*587)+(b*114))/1000;
             return (yiq >= 128) ? '#333333' : '#ffffff';
         }
 
@@ -3515,7 +3476,7 @@
             const bgColor = s.bgColor || '#0a2d5b';
             document.documentElement.style.setProperty('--bgColor', bgColor);
             document.documentElement.style.setProperty('--accentColor', s.accentColor || '#22d3ee');
-
+            
             const popupTextColor = getContrastYIQ(bgColor);
             document.documentElement.style.setProperty('--popupTextColor', popupTextColor);
         }
