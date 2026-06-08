@@ -1837,6 +1837,29 @@
                         return;
                     }
 
+                    // If it is the first fetch and the source worksheet is filtered by the hierarchy columns,
+                    // we must clear those filters first to get the complete tree.
+                    if (!firstFetchDone[f.id]) {
+                        try {
+                            const filters = await ws.getFiltersAsync();
+                            const colsToClear = filters.filter(flt =>
+                                f.cols.some(c => matchColumnName(c, flt.fieldName, exactFieldNameMap))
+                            );
+                            if (colsToClear.length > 0) {
+                                console.log(`[filter-ext] Clearing ${colsToClear.length} existing hierarchy filters on source worksheet "${ws.name}" to fetch full tree...`);
+                                await Promise.all(colsToClear.map(async (flt) => {
+                                    try {
+                                        await ws.clearFilterAsync(flt.fieldName);
+                                    } catch (errClear) {
+                                        console.warn(`Failed to clear filter "${flt.fieldName}" on "${ws.name}":`, errClear);
+                                    }
+                                }));
+                            }
+                        } catch (eFilters) {
+                            console.warn(`Failed to inspect/clear filters on "${ws.name}":`, eFilters);
+                        }
+                    }
+
                     const dataTable = await ws.getSummaryDataAsync({
                         ignoreSelection: true,
                         maxRows: configMaxRows
@@ -1997,6 +2020,29 @@
                         console.warn(`Worksheet "${wf.sheet}" not found for filter "${wf.title}"`);
                         wsFiltersData[wf.id] = masterWsFiltersData[wf.id] || [];
                         continue;
+                    }
+
+                    // If it is the first fetch and the source worksheet is filtered by this column,
+                    // we must clear that filter first to get the complete list.
+                    const wfKey = 'ws_' + wf.id;
+                    if (!firstFetchDone[wfKey]) {
+                        try {
+                            const filters = await ws.getFiltersAsync();
+                            const matchedFilter = filters.find(flt =>
+                                matchColumnName(wf.col, flt.fieldName, exactFieldNameMap)
+                            );
+                            if (matchedFilter) {
+                                console.log(`[filter-ext] Clearing existing worksheet filter "${matchedFilter.fieldName}" on source worksheet "${ws.name}" to fetch full list...`);
+                                try {
+                                    await ws.clearFilterAsync(matchedFilter.fieldName);
+                                } catch (errClear) {
+                                    console.warn(`Failed to clear filter "${matchedFilter.fieldName}" on "${ws.name}":`, errClear);
+                                }
+                            }
+                        } catch (eFilters) {
+                            console.warn(`Failed to inspect/clear filters on "${ws.name}":`, eFilters);
+                        }
+                        firstFetchDone[wfKey] = true;
                     }
 
                     let allValues = [];
