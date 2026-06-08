@@ -456,6 +456,13 @@
             background: rgba(255,255,255,0.12);
         }
 
+        .ws-filter-check-item.inactive {
+            opacity: 0.45;
+        }
+        .ws-filter-check-item.inactive .ws-filter-check-label {
+            font-style: italic;
+        }
+
         .ws-cb-native {
             width: 13px;
             height: 13px;
@@ -769,6 +776,8 @@
         // drop users/values from the filter (a truncation warning is logged).
         let configMaxRows = 0;
         let wsFiltersData = {};
+        let masterWsFiltersData = {};
+        let activeWsFiltersData = {};
         let selectedWsPathsMap = {};
         let exactFieldNameMap = {};
         let tableauListeners = [];
@@ -1986,11 +1995,13 @@
                     const ws = dashboard.worksheets.find(w => w.name === wf.sheet);
                     if (!ws) {
                         console.warn(`Worksheet "${wf.sheet}" not found for filter "${wf.title}"`);
-                        wsFiltersData[wf.id] = [];
+                        wsFiltersData[wf.id] = masterWsFiltersData[wf.id] || [];
                         continue;
                     }
 
                     let allValues = [];
+                    let databaseValues = [];
+                    let summaryValues = [];
 
                     // Path 1: derive values from the fresh (current-fetch) hierarchy tree
                     // whose root column matches this ws filter's column. freshTreesData
@@ -2003,13 +2014,36 @@
                         freshTreesData[f.id] && Object.keys(freshTreesData[f.id]).length > 0
                     );
                     if (matchedHierarchy) {
-                        allValues = Object.keys(freshTreesData[matchedHierarchy.id]);
+                        summaryValues = Object.keys(freshTreesData[matchedHierarchy.id]);
                     }
 
-                    // Path 2: if no matching hierarchy, fetch distinct values from the
-                    // ws filter's configured worksheet summary data (respects date/tool
-                    // filters applied to that worksheet).
-                    if (!allValues.length) {
+                    // Path 2: get domain from filter shelf (Database domain ignores filters)
+                    try {
+                        const filters = await ws.getFiltersAsync();
+                        const matchedFilter = filters.find(flt =>
+                            matchColumnName(wf.col, flt.fieldName, exactFieldNameMap)
+                        );
+                        if (matchedFilter) {
+                            exactFieldNameMap[wf.col] = matchedFilter.fieldName;
+                            let domain = null;
+                            try {
+                                domain = await matchedFilter.getDomainAsync(tableau.FilterDomainType.Database);
+                            } catch (e1) {
+                                try { domain = await matchedFilter.getDomainAsync(tableau.FilterDomainType.Relevant); }
+                                catch (e2) { console.warn('Filter domain fetch failed:', e2); }
+                            }
+                            if (domain && Array.isArray(domain.values)) {
+                                databaseValues = domain.values
+                                    .map(v => v.formattedValue)
+                                    .filter(v => v && v !== 'Null' && v !== '');
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`getFiltersAsync failed for "${wf.sheet}":`, e);
+                    }
+
+                    // Path 3: fetch distinct values from summary data (only if we didn't get them from Path 1)
+                    if (!summaryValues.length) {
                         try {
                             const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
                             if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
@@ -2025,7 +2059,7 @@
                                     const v = row[colIdx] && row[colIdx].formattedValue;
                                     if (v && v !== 'Null' && v !== '') seen.add(v);
                                 });
-                                allValues = Array.from(seen);
+                                summaryValues = Array.from(seen);
                             } else {
                                 console.warn(
                                     `Column "${wf.col}" not found in worksheet "${wf.sheet}". ` +
@@ -2037,44 +2071,29 @@
                         }
                     }
 
-                    // Path 3: last resort — filter domain from the Filters shelf.
-                    if (!allValues.length) {
-                        try {
-                            const filters = await ws.getFiltersAsync();
-                            const matchedFilter = filters.find(flt =>
-                                matchColumnName(wf.col, flt.fieldName, exactFieldNameMap)
-                            );
-                            if (matchedFilter) {
-                                exactFieldNameMap[wf.col] = matchedFilter.fieldName;
-                                let domain = null;
-                                try {
-                                    domain = await matchedFilter.getDomainAsync(tableau.FilterDomainType.Relevant);
-                                } catch (e1) {
-                                    try { domain = await matchedFilter.getDomainAsync(tableau.FilterDomainType.Database); }
-                                    catch (e2) { console.warn('Filter domain fetch failed:', e2); }
-                                }
-                                if (domain && Array.isArray(domain.values)) {
-                                    allValues = domain.values
-                                        .map(v => v.formattedValue)
-                                        .filter(v => v && v !== 'Null' && v !== '');
-                                }
-                            }
-                        } catch (e) {
-                            console.warn(`getFiltersAsync failed for "${wf.sheet}":`, e);
-                        }
+                    // Combine all values found for the master/selectable set
+                    const combinedSet = new Set([...databaseValues, ...summaryValues]);
+                    allValues = Array.from(combinedSet);
+
+                    if (!masterWsFiltersData[wf.id]) masterWsFiltersData[wf.id] = [];
+                    const masterSet = new Set(masterWsFiltersData[wf.id]);
+                    allValues.forEach(v => masterSet.add(v));
+                    masterWsFiltersData[wf.id] = Array.from(masterSet).sort((a, b) => a.localeCompare(b));
+
+                    wsFiltersData[wf.id] = masterWsFiltersData[wf.id];
+
+                    if (!skipActiveTreeUpdate) {
+                        activeWsFiltersData[wf.id] = summaryValues;
                     }
 
-                    allValues.sort((a, b) => a.localeCompare(b));
-                    wsFiltersData[wf.id] = allValues;
-
-                    if (allValues.length) {
+                    if (wsFiltersData[wf.id].length) {
                         const current = selectedWsPathsMap[wf.id];
                         if (!current || current.length === 0) {
                             // No saved selection — default to all values selected
-                            selectedWsPathsMap[wf.id] = [...allValues];
+                            selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
                         } else {
-                            // Prune selections no longer valid in the current domain
-                            const valid = new Set(allValues);
+                            // Prune selections no longer valid in the master domain
+                            const valid = new Set(wsFiltersData[wf.id]);
                             selectedWsPathsMap[wf.id] = current.filter(
                                 v => v === '___NONE___' || valid.has(v)
                             );
@@ -2082,7 +2101,7 @@
                     }
                 } catch (err) {
                     console.error(`Error loading worksheet filter "${wf.title}":`, err);
-                    wsFiltersData[wf.id] = [];
+                    wsFiltersData[wf.id] = masterWsFiltersData[wf.id] || [];
                 }
 
                 // Re-render this filter's UI so dropdown + pills reflect new domain.
@@ -2345,6 +2364,12 @@
                     const isChecked = selected.includes(val);
                     const item = document.createElement('div');
                     item.className = 'ws-filter-check-item';
+
+                    // Check active state to apply greyed-out style if the option has no activity in current scope
+                    const activeSet = activeWsFiltersData[wfId] ? new Set(activeWsFiltersData[wfId]) : null;
+                    const isInactive = activeSet && !activeSet.has(val);
+                    if (isInactive) item.classList.add('inactive');
+
                     const cb = document.createElement('input');
                     cb.type = 'checkbox';
                     cb.className = 'ws-cb-native';
