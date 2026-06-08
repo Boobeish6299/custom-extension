@@ -245,8 +245,7 @@
             background: var(--bgColor, #0a2d5b);
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 6px;
-            max-height: 250px;
-            overflow-y: auto;
+            overflow: hidden;
             z-index: 1000;
             display: none;
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
@@ -430,12 +429,10 @@
             background: var(--bgColor, #0a2d5b);
             border: 1px solid rgba(255,255,255,0.2);
             border-radius: 6px;
-            max-height: 200px;
-            overflow-y: auto;
+            overflow: hidden;
             z-index: 1000;
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
             color: var(--popupTextColor, #ffffff);
-            padding: 3px 0;
         }
 
         .ws-filter-popover.open {
@@ -470,6 +467,48 @@
 
         .ws-filter-check-label {
             cursor: pointer;
+        }
+
+        /* ── Popup internal search + footer (Team & Tool filters) ── */
+        .popup-search-wrap {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 10px 6px;
+            border-bottom: 1px solid rgba(255,255,255,0.12);
+        }
+        .popup-search-icon {
+            flex-shrink: 0;
+            width: 13px;
+            height: 13px;
+            opacity: 0.5;
+            fill: currentColor;
+        }
+        .popup-search-input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: inherit;
+            font-size: 12px;
+            width: 100%;
+            min-width: 0;
+        }
+        .popup-search-input::placeholder {
+            opacity: 0.45;
+            font-style: italic;
+        }
+        .popup-scroll-area {
+            max-height: 190px;
+            overflow-y: auto;
+        }
+        .popup-footer {
+            display: flex;
+            align-items: center;
+            padding: 5px 10px;
+            border-top: 1px solid rgba(255,255,255,0.12);
+            font-size: 11px;
+            opacity: 0.6;
+            font-style: italic;
         }
 
         /* ── Custom date-picker calendar ── */
@@ -758,6 +797,16 @@
         // next apply we forcibly applyFilterAsync with explicit values from
         // the master tree to overwrite the sentinel, then drop the flag.
         let wasCancelledMap = {};
+        // When true, fetchDataAndRender will NOT overwrite activeTreesData.
+        // Set just before Phase 2 pushes the hierarchy/team filter to Tableau
+        // so that the resulting SummaryDataChanged / FilterChanged refetches
+        // (which return only the selected subset) don't corrupt the "who has
+        // activity in the current date+tool scope" baseline.
+        // Cleared by its own 30s timer (skipActiveTreeTimer) — independent of
+        // suppressRefetch so Phase 1's suppressRefetchFor call doesn't block
+        // the Phase 1 scope-change fetch from updating activeTreesData.
+        let skipActiveTreeUpdate = false;
+        let skipActiveTreeTimer = null;
 
         // Cache of the last filter state pushed to each (worksheet, column).
         // Skips redundant applyFilterAsync / clearFilterAsync calls so KPI
@@ -1851,16 +1900,13 @@
                     // filters narrow. The ACTIVE tree (just this fetch) is
                     // what determines who's currently auto-selectable.
                     freshTreesData[f.id] = tree;
-                    // Only refresh the "active scope" baseline when this fetch
-                    // reflects the current date+tool scope WITHOUT a team
-                    // filter applied (autoSelect=true = scope change).
-                    // Post-apply refreshes (autoSelect=false) are triggered
-                    // AFTER the team filter has been pushed to Tableau, so
-                    // getSummaryDataAsync returns only the selected subset.
-                    // Overwriting activeTreesData in that case makes every
-                    // unselected employee appear "inactive" (greyed) even
-                    // though they have activity in the current date/tool scope.
-                    if (autoSelect) {
+                    // Only update the active-scope baseline when we have an
+                    // unfiltered view of the data (date+tool scope only, no
+                    // team/hierarchy filter applied). When skipActiveTreeUpdate
+                    // is set, the fetch was triggered after the team filter was
+                    // pushed — so the result is narrowed and must not overwrite
+                    // the full active-scope snapshot.
+                    if (!skipActiveTreeUpdate) {
                         activeTreesData[f.id] = tree;
                     }
                     if (!masterTreesData[f.id]) masterTreesData[f.id] = {};
@@ -2072,33 +2118,51 @@
             const ctrl = document.createElement('div'); ctrl.className = 'filter-controls';
             ctrl.innerHTML = `<span class="filter-link" style="color:#3b82f6" onclick="selectAllPaths('${fId}')">Select All</span><span class="filter-link" style="color:#ef4444" onclick="clearFilterPaths('${fId}')">Cancel All</span>`;
             container.appendChild(ctrl);
-            // Active = present in the current fetch's tree (date + tool
-            // scope). The master tree (treesData) may include historical
-            // leaders whose activity dropped out — those render greyed.
             const activePathSet = new Set(getAllPaths(activeTreesData[fId] || {}));
-            renderTreeLevel(fId, container, treesData[fId], [], document.getElementById('search-' + fId).value, activePathSet);
+            // Read search term from the popup-internal input (preferred) or
+            // fall back to the external trigger input for compatibility.
+            const searchEl = document.getElementById('popup-search-' + fId) || document.getElementById('search-' + fId);
+            const searchTerm = searchEl ? searchEl.value : '';
+            renderTreeLevel(fId, container, treesData[fId], [], searchTerm, activePathSet);
+
+            // Update footer: count of explicit (user-made) selections
+            const footer = document.getElementById('popup-footer-' + fId);
+            if (footer) {
+                const cnt = (explicitPathsMap[fId] || []).filter(p => p && !p.includes('___')).length;
+                footer.textContent = cnt + ' selected';
+            }
+
+            // Wire the popup-internal search input (once) — debounced re-render
+            const popupSearch = document.getElementById('popup-search-' + fId);
+            if (popupSearch && !popupSearch._wired) {
+                let st = null;
+                popupSearch.oninput = () => { clearTimeout(st); st = setTimeout(() => renderTree(fId), 200); };
+                popupSearch.onclick = (e) => e.stopPropagation();
+                popupSearch._wired = true;
+            }
         }
 
-        function renderTreeLevel(fId, container, nodeData, currentPath, searchTerm, activePathSet) {
+        function renderTreeLevel(fId, container, nodeData, currentPath, searchTerm, activePathSet, parentMatched = false) {
             const ul = document.createElement('ul'); ul.className = currentPath.length === 0 ? 'tree tree-root' : 'tree';
             Object.keys(nodeData || {}).sort().forEach(key => {
                 const pathStr = [...currentPath, key].join('|');
                 const hasChildren = Object.keys(nodeData[key]).length > 0;
+                const keyMatches = searchTerm && key.toLowerCase().includes(searchTerm.toLowerCase());
 
-                // Deep match: skip this node only when neither this key nor any
+                // Deep match: skip this node only when neither this key, its parent, nor any
                 // descendant at any depth matches the search term.
-                if (searchTerm && !key.toLowerCase().includes(searchTerm.toLowerCase()) &&
+                if (searchTerm && !parentMatched && !keyMatches &&
                     !subtreeContainsMatch(nodeData[key], searchTerm)) return;
 
                 const li = document.createElement('li'); li.className = 'tree-node';
                 const contentDiv = document.createElement('div'); contentDiv.className = 'node-content';
                 const isChecked = selectedPathsMap[fId].includes(pathStr);
-                // During a search: auto-expand a node if it has children and
-                // its subtree contains a match (so the matching descendant is
-                // visible without the user having to click every chevron).
+                // During a search: auto-expand a node if it has children and either
+                // the node itself matches (so we can see its direct subordinates) OR
+                // its subtree contains a match (so the matching descendant is visible).
                 // Outside of search: honour the user's manual expand state.
                 const isExpanded = searchTerm
-                    ? (hasChildren && subtreeContainsMatch(nodeData[key], searchTerm))
+                    ? (hasChildren && (keyMatches || subtreeContainsMatch(nodeData[key], searchTerm)))
                     : expandedPathsMap[fId].has(pathStr);
                 const isInactive = activePathSet && activePathSet.size > 0 && !activePathSet.has(pathStr);
                 if (isInactive) contentDiv.classList.add('inactive');
@@ -2122,7 +2186,7 @@
                     e.stopPropagation(); if (expandedPathsMap[fId].has(pathStr)) expandedPathsMap[fId].delete(pathStr); else expandedPathsMap[fId].add(pathStr); renderTree(fId);
                 };
                 li.appendChild(contentDiv);
-                if (hasChildren && isExpanded) renderTreeLevel(fId, li, nodeData[key], [...currentPath, key], searchTerm, activePathSet);
+                if (hasChildren && isExpanded) renderTreeLevel(fId, li, nodeData[key], [...currentPath, key], searchTerm, activePathSet, keyMatches);
                 ul.appendChild(li);
             });
             container.appendChild(ul);
@@ -2236,7 +2300,18 @@
             const noneSelected = selected.length === 0 || (selected.length === 1 && selected.includes('___NONE___'));
             const allSelected = !noneSelected && values.length > 0 && values.every(v => selected.includes(v));
 
-            // (All) checkbox item
+            // Filter items by the popup-internal search term
+            const searchEl = document.getElementById('ws-popup-search-' + wfId);
+            const term = searchEl ? searchEl.value.toLowerCase().trim() : '';
+
+            // Wire popup search once
+            if (searchEl && !searchEl._wired) {
+                searchEl.oninput = () => renderWsTree(wfId);
+                searchEl.onclick = (e) => e.stopPropagation();
+                searchEl._wired = true;
+            }
+
+            // (All) checkbox item — always shown regardless of search
             const allItem = document.createElement('div');
             allItem.className = 'ws-filter-check-item';
             const allCb = document.createElement('input');
@@ -2249,9 +2324,6 @@
             allItem.appendChild(allCb);
             allItem.appendChild(allLabel);
             allItem.onclick = (e) => {
-                // Keep the click inside the popover — see tree-node handler
-                // above for why the global listener would otherwise close
-                // this dropdown.
                 e.stopPropagation();
                 if (e.target === allCb) return;
                 allCb.checked = !allCb.checked;
@@ -2266,31 +2338,40 @@
             };
             container.appendChild(allItem);
 
-            // Individual checkboxes
-            values.forEach(val => {
-                const isChecked = selected.includes(val);
-                const item = document.createElement('div');
-                item.className = 'ws-filter-check-item';
-                const cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.className = 'ws-cb-native';
-                cb.checked = isChecked;
-                const label = document.createElement('span');
-                label.className = 'ws-filter-check-label';
-                label.textContent = val;
-                item.appendChild(cb);
-                item.appendChild(label);
-                item.onclick = (e) => {
-                    e.stopPropagation();
-                    if (e.target === cb) return;
-                    cb.checked = !cb.checked;
-                    cb.dispatchEvent(new Event('change'));
-                };
-                cb.onchange = () => toggleCheckWsNode(wfId, val);
-                container.appendChild(item);
-            });
+            // Individual checkboxes — filtered by search term
+            values
+                .filter(val => !term || val.toLowerCase().includes(term))
+                .forEach(val => {
+                    const isChecked = selected.includes(val);
+                    const item = document.createElement('div');
+                    item.className = 'ws-filter-check-item';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.className = 'ws-cb-native';
+                    cb.checked = isChecked;
+                    const label = document.createElement('span');
+                    label.className = 'ws-filter-check-label';
+                    label.textContent = val;
+                    item.appendChild(cb);
+                    item.appendChild(label);
+                    item.onclick = (e) => {
+                        e.stopPropagation();
+                        if (e.target === cb) return;
+                        cb.checked = !cb.checked;
+                        cb.dispatchEvent(new Event('change'));
+                    };
+                    cb.onchange = () => toggleCheckWsNode(wfId, val);
+                    container.appendChild(item);
+                });
 
-            // Update dropdown to reflect selection
+            // Update footer count
+            const footer = document.getElementById('ws-popup-footer-' + wfId);
+            if (footer) {
+                const cnt = (selectedWsPathsMap[wfId] || []).filter(v => v !== '___NONE___').length;
+                footer.textContent = cnt + ' selected';
+            }
+
+            // Update dropdown trigger to reflect selection
             updateWsDropdown(wfId);
         }
 
@@ -3104,6 +3185,17 @@
             await syncSelectionToSettings();
 
             try {
+                // Protect activeTreesData from post-Phase-2 Tableau events:
+                // applyFilterAsync resolves before Tableau fires SummaryDataChanged
+                // / FilterChanged on downstream worksheets. Those callbacks call
+                // fetchDataAndRender which would narrow activeTreesData to only the
+                // selected subset. Setting the flag here (and clearing it after 30s
+                // via its own timer) keeps the full date+tool scope baseline intact
+                // for the entire event-cascade window. Phase 1's suppressRefetchFor
+                // does NOT touch this flag, so Phase 1's fetch can still update it.
+                skipActiveTreeUpdate = true;
+                if (skipActiveTreeTimer) clearTimeout(skipActiveTreeTimer);
+                skipActiveTreeTimer = setTimeout(() => { skipActiveTreeUpdate = false; skipActiveTreeTimer = null; }, 30000);
                 await _applyFilterStateToTableau(true);
             } catch (e) {
                 console.warn('[filter-ext] phase-2 apply failed:', e);
@@ -3194,8 +3286,11 @@
         // though they were selected. Expanding over the master subtree keeps
         // every selected leader's deep levels fully covered so they're cleared.
         function selectAllPaths(fId) {
-            const active = activeTreesData[fId] || {};
-            explicitPathsMap[fId] = Object.keys(active);
+            // Use masterTreesData (all users ever seen with activity in any
+            // fetch for the current session) so Select All covers every person
+            // with real data — not just those in the team-filtered subset.
+            const master = masterTreesData[fId] || {};
+            explicitPathsMap[fId] = Object.keys(master);
             recomputeSelectedFromExplicit(fId);
             renderTree(fId);
             renderPills(fId);
@@ -3212,6 +3307,8 @@
             explicitPathsMap[fId] = [];
             const searchInput = document.getElementById('search-' + fId);
             if (searchInput) searchInput.value = '';
+            const popupSearch = document.getElementById('popup-search-' + fId);
+            if (popupSearch) popupSearch.value = '';
             renderTree(fId);
             renderPills(fId);
             markDirty();
@@ -3374,7 +3471,14 @@
                         <span class="ws-filter-arrow">&#9660;</span>
                     </div>
                     <div class="ws-filter-popover" id="ws-popover-${wf.id}">
-                        <div id="ws-checklist-${wf.id}"></div>
+                        <div class="popup-search-wrap">
+                            <svg class="popup-search-icon" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"/></svg>
+                            <input type="text" id="ws-popup-search-${wf.id}" class="popup-search-input" placeholder="Search items..." autocomplete="off"/>
+                        </div>
+                        <div class="popup-scroll-area">
+                            <div id="ws-checklist-${wf.id}"></div>
+                        </div>
+                        <div class="popup-footer" id="ws-popup-footer-${wf.id}">0 selected</div>
                     </div>
                     <div class="warning-container" id="warning-${wf.id}"></div>
                 </div>`;
@@ -3382,25 +3486,18 @@
 
             // 3. Hierarchies (Leaders L2-L9 tree-select) — rendered last
             configFilters.forEach(f => {
-                container.innerHTML += `<div class="filter-block"><div class="filter-title" style="color:${tC}; background-color:${tB}">${escHtml(f.title)}</div><div class="pill-container hierarchy-pills" id="pills-${f.id}"></div><div class="dropdown-trigger" id="trigger-${f.id}" onclick="togglePopup('popup-${f.id}', event)"><input type="text" id="search-${f.id}" class="search-box" placeholder="Select..." autocomplete="off"/></div><div class="tree-popup" id="popup-${f.id}"><div class="tree-container" id="ptree-cont-${f.id}"></div></div><div class="warning-container" id="warning-${f.id}"></div></div>`;
+                const searchSvg = `<svg class="popup-search-icon" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.656a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"/></svg>`;
+                container.innerHTML += `<div class="filter-block"><div class="filter-title" style="color:${tC}; background-color:${tB}">${escHtml(f.title)}</div><div class="pill-container hierarchy-pills" id="pills-${f.id}"></div><div class="dropdown-trigger" id="trigger-${f.id}" onclick="togglePopup('popup-${f.id}', event)"><input type="text" id="search-${f.id}" class="search-box" placeholder="Select..." readonly autocomplete="off"/></div><div class="tree-popup" id="popup-${f.id}"><div class="popup-search-wrap">${searchSvg}<input type="text" id="popup-search-${f.id}" class="popup-search-input" placeholder="Search items..." autocomplete="off"/></div><div class="popup-scroll-area" id="popup-scroll-${f.id}"><div class="tree-container" id="ptree-cont-${f.id}"></div></div><div class="popup-footer" id="popup-footer-${f.id}">0 selected</div></div><div class="warning-container" id="warning-${f.id}"></div></div>`;
             });
 
             // Bind search input listeners for hierarchies
+            // The external trigger input (search-${f.id}) is now read-only; the real
+            // search lives inside the popup (popup-search-${f.id}) and is wired by
+            // renderTree on first render. Keep the onclick so clicking the closed
+            // trigger still opens the popup.
             configFilters.forEach(f => {
                 const input = document.getElementById('search-' + f.id);
                 if (input) {
-                    let searchTimer = null;
-                    input.oninput = () => {
-                        const popup = document.getElementById('popup-' + f.id);
-                        if (popup && popup.style.display !== 'block') {
-                            togglePopup('popup-' + f.id, null);
-                        }
-                        // Debounce: the tree isn't virtualized, so re-rendering it
-                        // on every keystroke janks on large hierarchies. Coalesce
-                        // rapid typing into one render ~250ms after the last key.
-                        clearTimeout(searchTimer);
-                        searchTimer = setTimeout(() => renderTree(f.id), 250);
-                    };
                     input.onclick = (e) => {
                         e.stopPropagation();
                         const popup = document.getElementById('popup-' + f.id);
@@ -3446,6 +3543,14 @@
             if (activePopupId && activePopupId !== pId) { let p = document.getElementById(activePopupId); if (p) p.style.display = 'none'; }
             pNode.style.display = pNode.style.display === 'block' ? 'none' : 'block';
             activePopupId = pNode.style.display === 'block' ? pId : null;
+
+            // Focus the popup-internal search when opening a hierarchy popup
+            if (activePopupId) {
+                // pId format: 'popup-{fId}' — derive fId by stripping prefix
+                const fId = pId.replace(/^popup-/, '');
+                const ps = document.getElementById('popup-search-' + fId);
+                if (ps) setTimeout(() => ps.focus(), 40);
+            }
 
             // Dynamically adjust height to fit dropdown popups in iframe
             try {
