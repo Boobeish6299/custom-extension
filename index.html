@@ -2365,11 +2365,6 @@
                     const item = document.createElement('div');
                     item.className = 'ws-filter-check-item';
 
-                    // Check active state to apply greyed-out style if the option has no activity in current scope
-                    const activeSet = activeWsFiltersData[wfId] ? new Set(activeWsFiltersData[wfId]) : null;
-                    const isInactive = activeSet && !activeSet.has(val);
-                    if (isInactive) item.classList.add('inactive');
-
                     const cb = document.createElement('input');
                     cb.type = 'checkbox';
                     cb.className = 'ws-cb-native';
