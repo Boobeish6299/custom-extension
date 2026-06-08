@@ -191,19 +191,51 @@
             letter-spacing: 0.04em;
             font-size: 11px;
             color: var(--titleColor, #393939);
+            position: relative;
+            cursor: default;
         }
 
-        .prev-period-value {
+        /* Tooltip shown on hover over the "Compared to previous period" label */
+        .prev-period-label .prev-period-tooltip {
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(20, 30, 55, 0.96);
+            color: #e8edf5;
             font-size: 11px;
-            /* Same color as .prev-period-label — "Compared to previous period"
-               is one sentence; the old --searchTextColor made the second half
-               render in a different (near-invisible on dark panels) color. */
-            color: var(--titleColor, #393939);
-            background: transparent;
-            border: none;
-            cursor: default;
-            user-select: text;
+            font-style: normal;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+            padding: 5px 10px;
+            border-radius: 6px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            border: 1px solid rgba(255,255,255,0.12);
+            z-index: 9999;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+            transform: translateX(-50%) translateY(4px);
         }
+        /* Caret / arrow */
+        .prev-period-label .prev-period-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: rgba(20, 30, 55, 0.96);
+        }
+        .prev-period-label:hover .prev-period-tooltip {
+            visibility: visible;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+
 
         .tree-popup {
             position: absolute;
@@ -1295,15 +1327,24 @@
             const el = document.getElementById('prev-period-value');
             const wrapper = document.getElementById('prev-period-block');
             if (!el) return;
-            // Single informational sentence (one span, one color) — the
-            // explicit prev-period date range was dropped by request (it
-            // overflowed the narrow panel and is implied by the selected
-            // window anyway). computePrevPeriodRange() still gates visibility
-            // so the note hides when no valid date pair is configured.
             const r = computePrevPeriodRange();
             if (!r) { if (wrapper) wrapper.style.display = 'none'; return; }
             if (wrapper) wrapper.style.display = '';
-            el.textContent = 'ⓘ Compared to previous period';
+
+            // Format the previous period date range for the tooltip
+            const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const fmtUTC = d => {
+                const mo = months[d.getUTCMonth()];
+                const dy = d.getUTCDate();
+                const yr = d.getUTCFullYear();
+                return `${mo} ${dy < 10 ? '0' + dy : dy}, ${yr}`;
+            };
+            const prevStartStr = fmtUTC(r.prevStart);
+            const prevEndStr   = fmtUTC(r.prevEnd);
+            const tooltipText  = `${prevStartStr} – ${prevEndStr}`;
+
+            // Rebuild inner HTML to include the tooltip span
+            el.innerHTML = `ⓘ Compared to previous period<span class="prev-period-tooltip">${tooltipText}</span>`;
         }
 
         function setupParameterInput(pConf) {
@@ -1810,7 +1851,18 @@
                     // filters narrow. The ACTIVE tree (just this fetch) is
                     // what determines who's currently auto-selectable.
                     freshTreesData[f.id] = tree;
-                    activeTreesData[f.id] = tree;
+                    // Only refresh the "active scope" baseline when this fetch
+                    // reflects the current date+tool scope WITHOUT a team
+                    // filter applied (autoSelect=true = scope change).
+                    // Post-apply refreshes (autoSelect=false) are triggered
+                    // AFTER the team filter has been pushed to Tableau, so
+                    // getSummaryDataAsync returns only the selected subset.
+                    // Overwriting activeTreesData in that case makes every
+                    // unselected employee appear "inactive" (greyed) even
+                    // though they have activity in the current date/tool scope.
+                    if (autoSelect) {
+                        activeTreesData[f.id] = tree;
+                    }
                     if (!masterTreesData[f.id]) masterTreesData[f.id] = {};
                     mergeTree(masterTreesData[f.id], tree);
                     treesData[f.id] = masterTreesData[f.id];
@@ -2002,6 +2054,19 @@
         }
 
         // --- Tree Rendering ---
+        // Returns true if `term` matches the node key itself OR any descendant
+        // key at any depth. Used by renderTreeLevel to keep ancestor nodes
+        // visible when a search matches a deep (e.g. L9) descendant.
+        function subtreeContainsMatch(nodeData, term) {
+            if (!term) return true;
+            const t = term.toLowerCase();
+            for (const key of Object.keys(nodeData || {})) {
+                if (key.toLowerCase().includes(t)) return true;
+                if (subtreeContainsMatch(nodeData[key], term)) return true;
+            }
+            return false;
+        }
+
         function renderTree(fId) {
             const container = document.getElementById('ptree-cont-' + fId); if (!container) return; container.innerHTML = '';
             const ctrl = document.createElement('div'); ctrl.className = 'filter-controls';
@@ -2019,16 +2084,26 @@
             Object.keys(nodeData || {}).sort().forEach(key => {
                 const pathStr = [...currentPath, key].join('|');
                 const hasChildren = Object.keys(nodeData[key]).length > 0;
-                if (searchTerm && !key.toLowerCase().includes(searchTerm.toLowerCase()) && !Object.keys(nodeData[key]).some(k => k.toLowerCase().includes(searchTerm.toLowerCase()))) return;
+
+                // Deep match: skip this node only when neither this key nor any
+                // descendant at any depth matches the search term.
+                if (searchTerm && !key.toLowerCase().includes(searchTerm.toLowerCase()) &&
+                    !subtreeContainsMatch(nodeData[key], searchTerm)) return;
 
                 const li = document.createElement('li'); li.className = 'tree-node';
                 const contentDiv = document.createElement('div'); contentDiv.className = 'node-content';
                 const isChecked = selectedPathsMap[fId].includes(pathStr);
-                const isExpanded = expandedPathsMap[fId].has(pathStr);
+                // During a search: auto-expand a node if it has children and
+                // its subtree contains a match (so the matching descendant is
+                // visible without the user having to click every chevron).
+                // Outside of search: honour the user's manual expand state.
+                const isExpanded = searchTerm
+                    ? (hasChildren && subtreeContainsMatch(nodeData[key], searchTerm))
+                    : expandedPathsMap[fId].has(pathStr);
                 const isInactive = activePathSet && activePathSet.size > 0 && !activePathSet.has(pathStr);
                 if (isInactive) contentDiv.classList.add('inactive');
 
-                contentDiv.innerHTML = `<span class="chevron ${!hasChildren ? 'empty' : (isExpanded ? 'expanded' : '')}">▶</span><div class="cb-container ${isChecked ? 'cb-checked' : ''}">${isChecked ? '✓' : ''}</div><span class="node-text">${escHtml(key)}</span>`;
+                contentDiv.innerHTML = `<span class="chevron ${!hasChildren ? 'empty' : (isExpanded ? 'expanded' : '')}">▶</span><div class="cb-container ${isChecked ? 'cb-checked' : ''}">` + (isChecked ? '✓' : '') + `</div><span class="node-text">${escHtml(key)}</span>`;
                 contentDiv.onclick = (e) => {
                     // Keep the click inside the popup — the global click
                     // listener treats clicks outside the popup as "close"
