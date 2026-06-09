@@ -3285,9 +3285,43 @@
                 // via its own timer) keeps the full date+tool scope baseline intact
                 // for the entire event-cascade window. Phase 1's suppressRefetchFor
                 // does NOT touch this flag, so Phase 1's fetch can still update it.
-                skipActiveTreeUpdate = true;
-                if (skipActiveTreeTimer) clearTimeout(skipActiveTreeTimer);
-                skipActiveTreeTimer = setTimeout(() => { skipActiveTreeUpdate = false; skipActiveTreeTimer = null; }, 30000);
+                //
+                // Only skip updating activeTreesData (the unfiltered baseline) if we are applying
+                // a narrowing team filter. If the filter is being cleared (All or empty), we set
+                // skipActiveTreeUpdate to false so that the subsequent fetch restores the baseline.
+                let hasActiveTeamFilter = false;
+                configFilters.forEach(f => {
+                    const explicit = explicitPathsMap[f.id] || [];
+                    if (explicit.length > 0) {
+                        const sp = selectedPathsMap[f.id] || [];
+                        if (sp.includes('___CANCELLED___')) {
+                            hasActiveTeamFilter = true;
+                        } else {
+                            const activeTree = activeTreesData[f.id] || {};
+                            const masterTree = masterTreesData[f.id] || {};
+                            const allTop = Object.keys(
+                                Object.keys(activeTree).length ? activeTree : (Object.keys(masterTree).length ? masterTree : (treesData[f.id] || {}))
+                            );
+                            if (allTop.length > 0) {
+                                const topLevelExplicit = new Set(explicit.filter(p => !p.includes('|')));
+                                const allCovered = allTop.every(k => topLevelExplicit.has(k));
+                                if (!allCovered) hasActiveTeamFilter = true;
+                            }
+                        }
+                    }
+                });
+
+                if (hasActiveTeamFilter) {
+                    skipActiveTreeUpdate = true;
+                    if (skipActiveTreeTimer) clearTimeout(skipActiveTreeTimer);
+                    skipActiveTreeTimer = setTimeout(() => { skipActiveTreeUpdate = false; skipActiveTreeTimer = null; }, 30000);
+                } else {
+                    skipActiveTreeUpdate = false;
+                    if (skipActiveTreeTimer) {
+                        clearTimeout(skipActiveTreeTimer);
+                        skipActiveTreeTimer = null;
+                    }
+                }
                 await _applyFilterStateToTableau(true);
             } catch (e) {
                 console.warn('[filter-ext] phase-2 apply failed:', e);
