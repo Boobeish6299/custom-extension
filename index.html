@@ -1925,6 +1925,9 @@
                         }
                     });
 
+                    // Prune redundant (self) nodes where a leader has no other subordinates
+                    pruneRedundantSelfNodes(tree);
+
                     // Keep the fresh (unmerged) tree for ws-filter derivation below.
                     // The MASTER tree (per-hierarchy union of all users ever
                     // seen) is what the UI renders, so users who were active
@@ -1943,6 +1946,7 @@
                     }
                     if (!masterTreesData[f.id]) masterTreesData[f.id] = {};
                     mergeTree(masterTreesData[f.id], tree);
+                    pruneRedundantSelfNodes(masterTreesData[f.id]);
                     treesData[f.id] = masterTreesData[f.id];
 
                     console.log(`[filter-ext] Hierarchy "${f.title}" built: ${Object.keys(tree).length} top-level keys; master now has ${Object.keys(masterTreesData[f.id]).length} top-level keys.`);
@@ -2678,6 +2682,28 @@
             Object.keys(source).forEach(key => {
                 if (!target[key]) target[key] = {};
                 mergeTree(target[key], source[key]);
+            });
+        }
+
+        // Recursively prune redundant (self) leaf nodes where a leader has no other subordinates
+        function pruneRedundantSelfNodes(node) {
+            if (!node) return;
+            Object.keys(node).forEach(key => {
+                const childNode = node[key];
+                if (childNode && typeof childNode === 'object') {
+                    // Recursively prune children first
+                    pruneRedundantSelfNodes(childNode);
+
+                    // Check if this childNode has only ONE child, and that child is "(self)"
+                    const grandChildKeys = Object.keys(childNode);
+                    if (grandChildKeys.length === 1) {
+                        const singleGrandChildKey = grandChildKeys[0];
+                        if (singleGrandChildKey.toLowerCase() === '(self)') {
+                            // Delete the redundant "(self)" child node
+                            delete childNode[singleGrandChildKey];
+                        }
+                    }
+                }
             });
         }
 
