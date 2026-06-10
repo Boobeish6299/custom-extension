@@ -2394,6 +2394,7 @@
                         if (!current || current.length === 0) {
                             // No saved selection — default to all values selected
                             selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
+                            clearWsWarning(wf.id);
                         } else {
                             // Prune selections no longer valid in the master domain
                             const valid = new Set(wsFiltersData[wf.id]);
@@ -2924,6 +2925,7 @@
         // (greyed-out members become active again, etc.).
         function selectWsAllPaths(wfId) {
             selectedWsPathsMap[wfId] = [...(wsFiltersData[wfId] || [])];
+            clearWsWarning(wfId);
             renderWsTree(wfId);
             renderWsPills(wfId);
             scopeDirty = true;
@@ -3031,6 +3033,12 @@
                     }
                     renderWsTree(wf.id);
                     renderWsPills(wf.id);
+                    // Clear any stale over-limit warning — selection may have changed
+                    // (e.g. parent switched to "All", restoring the full value list).
+                    const _wfConf = configWsFilters.find(f => f.id === wf.id);
+                    const _maxSel = (_wfConf && _wfConf.maxSelections) ? _wfConf.maxSelections : 0;
+                    const _selCount = (selectedWsPathsMap[wf.id] || []).filter(v => v !== '___NONE___').length;
+                    if (_maxSel === 0 || _selCount <= _maxSel) clearWsWarning(wf.id);
                 } catch (e) {
                     console.warn(`[filter-ext] fetchWsFiltersForDependents failed for "${wf.title}":`, e);
                 }
@@ -3315,32 +3323,54 @@
             // Worksheet filters (e.g. Tool) — always included; empty selection
             // here means "clear filter / show all", which is the existing
             // semantic for the Tool dropdown.
+            //
+            // Fetch parameters once for all paramName-based wsFilters so we don't
+            // pay a getParametersAsync() round-trip per wsFilter (N → 1 call).
+            let _cachedParams = null;
+            if (configWsFilters.some(wf => wf.paramName)) {
+                try {
+                    _cachedParams = await tableau.extensions.dashboardContent.dashboard
+                        .getParametersAsync();
+                } catch (e) {
+                    console.warn('[filter-ext] getParametersAsync failed:', e);
+                    _cachedParams = [];
+                }
+            }
+
             for (const wf of configWsFilters) {
                 const exactColName = exactFieldNameMap[wf.col] || wf.col;
                 const vals = selectedWsPathsMap[wf.id] || [];
-                if (vals.includes('___NONE___') || vals.length === 0) {
-                    addToClear(exactColName, wf.col);
-                } else {
-                    addToApply(exactColName, wf.col, vals);
-                }
 
                 if (wf.paramName) {
-                    try {
-                        const params = await tableau.extensions.dashboardContent.dashboard
-                            .getParametersAsync();
-                        const _pn = wf.paramName;
-                        const param = params.find(p => p.name === _pn) ||
-                                      params.find(p => p.name.toLowerCase() === _pn.toLowerCase());
-                        if (!param) console.warn(`[filter-ext] Parameter "${_pn}" not found. Available: ${params.map(p => p.name).join(', ')}`);
-                        if (param) {
-                            const sel    = (selectedWsPathsMap[wf.id] || []).filter(v => v !== '___NONE___');
+                    // Parameter-driven wsFilter: the workbook's calculated field (e.g.
+                    // [Model In Selection] driven by [Selected Models]) handles filtering
+                    // on each worksheet automatically when the parameter changes.
+                    // Only changeValueAsync is needed — applyFilterAsync to N worksheets
+                    // is redundant and adds N Tableau round-trips + N FilterChanged events.
+                    const _pn = wf.paramName;
+                    const param = (_cachedParams || []).find(p => p.name === _pn) ||
+                                  (_cachedParams || []).find(p => p.name.toLowerCase() === _pn.toLowerCase());
+                    if (!param) {
+                        console.warn(`[filter-ext] Parameter "${_pn}" not found. Available:`,
+                            (_cachedParams || []).map(p => p.name).join(', '));
+                    } else {
+                        try {
+                            const sel    = vals.filter(v => v !== '___NONE___');
                             const allVals = wsFiltersData[wf.id] || [];
                             const isAll  = sel.length === 0 ||
                                 (allVals.length > 0 && sel.length === allVals.length);
                             await param.changeValueAsync(isAll ? 'all' : sel.join(','));
+                        } catch (paramErr) {
+                            console.warn(`[filter-ext] changeValueAsync failed for "${_pn}":`, paramErr);
                         }
-                    } catch (paramErr) {
-                        console.warn(`[filter-ext] Could not set parameter "${wf.paramName}":`, paramErr);
+                    }
+                    // Skip adding to fApply: parameter update re-queries worksheets
+                    // via the workbook's calculated filter field.
+                } else {
+                    if (vals.includes('___NONE___') || vals.length === 0) {
+                        addToClear(exactColName, wf.col);
+                    } else {
+                        addToApply(exactColName, wf.col, vals);
                     }
                 }
             }
