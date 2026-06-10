@@ -903,6 +903,13 @@
         //     date scope, never another extension's drill selection.
         let suppressRefetch = false;
         let suppressTimer = null;
+        /** Returns true for blank/sentinel ws-filter values that should never appear in dropdowns. */
+        function isBlankWsValue(v) {
+            if (!v) return true;
+            const lv = String(v).toLowerCase().trim();
+            return lv === '' || lv === 'null' || lv === '_none_';
+        }
+
         /** Escape a string for safe injection into innerHTML. */
         function escHtml(s) {
             if (s == null) return '';
@@ -2215,7 +2222,7 @@
                             if (domain && Array.isArray(domain.values)) {
                                 databaseValues = domain.values
                                     .map(v => v.formattedValue)
-                                    .filter(v => v && v !== 'Null' && v !== '');
+                                    .filter(v => !isBlankWsValue(v));
                             }
                         }
                     } catch (e) {
@@ -2233,7 +2240,9 @@
                             if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
                                 console.warn(`[filter-ext] Worksheet filter "${wf.title}" hit the ${configMaxRows}-row cap reading "${wf.sheet}" — the value list may be INCOMPLETE. Raise "Max Rows per Source Read" or set it to 0.`);
                             }
+                            const _colExact = exactFieldNameMap[wf.col];
                             const colIdx = dataTable.columns.findIndex(c =>
+                                (_colExact && c.fieldName === _colExact) ||
                                 matchColumnName(wf.col, c.fieldName, exactFieldNameMap)
                             );
                             if (colIdx >= 0) {
@@ -2242,7 +2251,7 @@
                                     const seen = new Set();
                                     dataTable.data.forEach(row => {
                                         const v = row[colIdx] && row[colIdx].formattedValue;
-                                        if (v && v !== 'Null' && v !== '') seen.add(v);
+                                        if (!isBlankWsValue(v)) seen.add(v);
                                     });
                                     summaryValues = Array.from(seen);
                                 }
@@ -2255,33 +2264,54 @@
                             // Build parent→child lookup for dependent filters so
                             // filtering is done client-side (no applyFilterAsync
                             // needed, which would trigger Tableau recomputes).
+                            // Fetch from the PARENT filter's source worksheet so the
+                            // parent column is guaranteed to be present. If both
+                            // filters share the same sheet, reuse the already-fetched
+                            // dataTable to avoid a redundant getSummaryDataAsync call.
                             if (wf.dependsOn) {
                                 const parentWfForLookup = configWsFilters.find(p => p.id === wf.dependsOn);
                                 if (parentWfForLookup) {
-                                    const parentExactFieldName = exactFieldNameMap[parentWfForLookup.col];
-                                    const parentColIdx = dataTable.columns.findIndex(c =>
-                                        (parentExactFieldName && c.fieldName === parentExactFieldName) ||
-                                        matchColumnName(parentWfForLookup.col, c.fieldName, exactFieldNameMap)
-                                    );
-                                    if (parentColIdx >= 0 && colIdx >= 0) {
-                                        const lookup = {};
-                                        dataTable.data.forEach(row => {
-                                            const pv = row[parentColIdx] && row[parentColIdx].formattedValue;
-                                            const ov = row[colIdx] && row[colIdx].formattedValue;
-                                            if (pv && ov && pv !== 'Null' && ov !== 'Null' && pv !== '' && ov !== '') {
-                                                if (!lookup[pv]) lookup[pv] = new Set();
-                                                lookup[pv].add(ov);
+                                    try {
+                                        let lookupTable = dataTable;
+                                        if (parentWfForLookup.sheet && parentWfForLookup.sheet !== wf.sheet) {
+                                            const parentLookupWs = dashboard.worksheets.find(w => w.name === parentWfForLookup.sheet);
+                                            if (parentLookupWs) {
+                                                lookupTable = await parentLookupWs.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
                                             }
-                                        });
-                                        dependencyLookup[wf.id] = lookup;
-                                        console.log(`[filter-ext] Built dependency lookup for "${wf.title}": ${Object.keys(lookup).length} parent values`);
-                                    } else {
-                                        console.warn(
-                                            `[filter-ext] Cannot build dependency lookup for "${wf.title}": ` +
-                                            `parent col "${parentWfForLookup.col}" ` +
-                                            `${parentColIdx >= 0 ? 'found' : 'NOT FOUND'} in "${wf.sheet}". ` +
-                                            `Available: ${dataTable.columns.map(c => c.fieldName).join(', ')}`
+                                        }
+                                        const parentExactFieldName = exactFieldNameMap[parentWfForLookup.col];
+                                        const childExactFieldName  = exactFieldNameMap[wf.col];
+                                        const parentColIdx = lookupTable.columns.findIndex(c =>
+                                            (parentExactFieldName && c.fieldName === parentExactFieldName) ||
+                                            matchColumnName(parentWfForLookup.col, c.fieldName, exactFieldNameMap)
                                         );
+                                        const childColIdx = lookupTable.columns.findIndex(c =>
+                                            (childExactFieldName && c.fieldName === childExactFieldName) ||
+                                            matchColumnName(wf.col, c.fieldName, exactFieldNameMap)
+                                        );
+                                        if (parentColIdx >= 0 && childColIdx >= 0) {
+                                            const lookup = {};
+                                            lookupTable.data.forEach(row => {
+                                                const pv = row[parentColIdx] && row[parentColIdx].formattedValue;
+                                                const ov = row[childColIdx] && row[childColIdx].formattedValue;
+                                                if (!isBlankWsValue(pv) && !isBlankWsValue(ov)) {
+                                                    if (!lookup[pv]) lookup[pv] = new Set();
+                                                    lookup[pv].add(ov);
+                                                }
+                                            });
+                                            dependencyLookup[wf.id] = lookup;
+                                            console.log(`[filter-ext] Built dependency lookup for "${wf.title}": ${Object.keys(lookup).length} parent values`);
+                                        } else {
+                                            console.warn(
+                                                `[filter-ext] Cannot build dependency lookup for "${wf.title}": ` +
+                                                `parent col "${parentWfForLookup.col}" ${parentColIdx >= 0 ? 'found' : 'NOT FOUND'}, ` +
+                                                `child col "${wf.col}" ${childColIdx >= 0 ? 'found' : 'NOT FOUND'} ` +
+                                                `in "${parentWfForLookup.sheet || wf.sheet}". ` +
+                                                `Available: ${lookupTable.columns.map(c => c.fieldName).join(', ')}`
+                                            );
+                                        }
+                                    } catch (lookupErr) {
+                                        console.warn(`[filter-ext] Failed to build dependency lookup for "${wf.title}":`, lookupErr);
                                     }
                                 }
                             }
