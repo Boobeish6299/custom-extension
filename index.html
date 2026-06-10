@@ -634,6 +634,12 @@
             background: #304674;
             box-shadow: 0 0 0 3px rgba(48, 70, 116, 0.18);
         }
+        .warning-container {
+            color: #ef4444;
+            font-size: 11px;
+            margin-top: 4px;
+            display: none;
+        }
     </style>
 </head>
 
@@ -750,6 +756,7 @@
         let fetchDataInProgress = false;
         let pendingAutoSelect = false;
         let configWsFilters = [];
+        let _dependentRefetchTimer = null;
         // Worksheet names (or name substrings) the extension must NEVER push
         // applyFilterAsync / clearFilterAsync to. Heavy calc sheets that aren't
         // shown (e.g. the LOC-Generated/Accepted "Previous period Calc" sheets)
@@ -1221,17 +1228,86 @@
                         <button onclick="removeConfigWsFilter('${wf.id}')" style="background:#ef4444; padding:2px 8px; margin:0;">X</button>
                     </div>
                     <label>Source Worksheet:</label>
-                    <select id="cfg-wssheet-${wf.id}">${sheetOptions}</select>
+                    <select id="cfg-wssheet-${wf.id}" onchange="populateWsColDropdown('${wf.id}')">${sheetOptions}</select>
                     <label>Column Name:</label>
-                    <input type="text" id="cfg-wscol-${wf.id}" value="${wf.col || ''}" />
+                    <select id="cfg-wscol-${wf.id}" style="width:100%; padding:6px; margin-top:5px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+                        <option value="">— Loading columns… —</option>
+                    </select>
+                    <label>Max Selections (0 = unlimited):</label>
+                    <input type="number" id="cfg-wsmaxsel-${wf.id}" min="0" value="${wf.maxSelections || 0}" style="width:70px; padding:6px; margin-top:5px; border:1px solid #ccc; border-radius:4px;"/>
+                    <label>Depends On (filter title, optional):</label>
+                    <select id="cfg-wsdepends-${wf.id}" style="width:100%; padding:6px; margin-top:5px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+                        <option value="">— None —</option>
+                        ${configWsFilters.filter(other => other.id !== wf.id).map(other =>
+                            `<option value="${other.id}">${other.title}</option>`
+                        ).join('')}
+                    </select>
+                    <label>Linked Tableau Parameter Name (optional):</label>
+                    <input type="text" id="cfg-wsparam-${wf.id}" value="${wf.paramName || ''}" placeholder="e.g. Selected Models" style="width:100%; padding:6px; margin-top:5px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;"/>
                 `;
                 container.appendChild(div);
                 document.getElementById(`cfg-wssheet-${wf.id}`).value = wf.sheet;
+                document.getElementById(`cfg-wsdepends-${wf.id}`).value = wf.dependsOn || '';
+                // Populate the column dropdown for the currently configured sheet,
+                // then set the saved column value as the selected option.
+                populateWsColDropdown(wf.id, wf.col);
             });
         }
 
+        /**
+         * Fetches the columns available on the currently-selected source worksheet
+         * for a wsFilter config entry, then populates the Column Name <select>.
+         *
+         * @param {string} wfId       - The wsFilter id (used to find the DOM elements)
+         * @param {string} [currentCol] - If provided, this value will be pre-selected
+         *                                after the dropdown is built (used on first render).
+         */
+        async function populateWsColDropdown(wfId, currentCol) {
+            const sheetSelect = document.getElementById('cfg-wssheet-' + wfId);
+            const colSelect   = document.getElementById('cfg-wscol-'   + wfId);
+            if (!sheetSelect || !colSelect) return;
+
+            const sheetName = sheetSelect.value;
+            if (!sheetName) {
+                colSelect.innerHTML = '<option value="">— Select a worksheet first —</option>';
+                return;
+            }
+
+            colSelect.innerHTML = '<option value="">— Loading… —</option>';
+
+            try {
+                const dashboard = tableau.extensions.dashboardContent.dashboard;
+                const ws = dashboard.worksheets.find(w => w.name === sheetName);
+                if (!ws) {
+                    colSelect.innerHTML = '<option value="">— Worksheet not found —</option>';
+                    return;
+                }
+
+                // Use getSummaryDataAsync to read the column names; maxRows:1 is enough
+                // since we only need the column metadata, not data rows.
+                const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 1 });
+                const cols = dataTable.columns.map(c => c.fieldName).sort((a, b) => a.localeCompare(b));
+
+                colSelect.innerHTML = '<option value="">— Select column —</option>' +
+                    cols.map(c => `<option value="${c}"${c === currentCol ? ' selected' : ''}>${c}</option>`).join('');
+
+                // If no column matched yet (first render with a saved friendly name),
+                // try a case-insensitive match so saved values like "Model" match "Model".
+                if (currentCol && !cols.includes(currentCol)) {
+                    const lower = currentCol.toLowerCase();
+                    const fuzzy = cols.find(c => c.toLowerCase() === lower);
+                    if (fuzzy) {
+                        colSelect.value = fuzzy;
+                    }
+                }
+            } catch (err) {
+                colSelect.innerHTML = '<option value="">— Error loading columns —</option>';
+                console.warn('[filter-ext] populateWsColDropdown failed:', err);
+            }
+        }
+
         function addConfigWsFilter() {
-            configWsFilters.push({ id: 'wf' + Date.now(), title: 'New Worksheet Filter', sheet: '', col: '' });
+            configWsFilters.push({ id: 'wf' + Date.now(), title: 'New Worksheet Filter', sheet: '', col: '', maxSelections: 0, dependsOn: '', paramName: '' });
             renderConfigWsFilters();
         }
 
@@ -1251,9 +1327,15 @@
                 p.paramName = document.getElementById('cfg-pname-' + p.id).value;
             });
             configWsFilters.forEach(wf => {
-                wf.title = document.getElementById('cfg-wstitle-' + wf.id).value;
-                wf.sheet = document.getElementById('cfg-wssheet-' + wf.id).value;
-                wf.col = document.getElementById('cfg-wscol-' + wf.id).value.trim();
+                wf.title        = document.getElementById('cfg-wstitle-'   + wf.id).value;
+                wf.sheet        = document.getElementById('cfg-wssheet-'   + wf.id).value;
+                wf.col          = document.getElementById('cfg-wscol-'     + wf.id).value.trim();
+                const maxSelEl  = document.getElementById('cfg-wsmaxsel-'  + wf.id);
+                const dependsEl = document.getElementById('cfg-wsdepends-' + wf.id);
+                const paramEl   = document.getElementById('cfg-wsparam-'   + wf.id);
+                wf.maxSelections = maxSelEl  ? (parseInt(maxSelEl.value,  10) || 0) : 0;
+                wf.dependsOn     = dependsEl ? dependsEl.value : '';
+                wf.paramName     = paramEl   ? paramEl.value.trim() : '';
             });
             configSkipSheets = document.getElementById('cfg-skip-sheets').value
                 .split(',').map(s => s.trim()).filter(s => s !== '');
@@ -2132,6 +2214,53 @@
 
                     wsFiltersData[wf.id] = masterWsFiltersData[wf.id];
 
+                    // If this filter depends on another ws filter, restrict its value list
+                    // to only values present in rows where the parent filter's selection applies.
+                    if (wf.dependsOn) {
+                        const parentWf       = configWsFilters.find(p => p.id === wf.dependsOn);
+                        const parentSelected = selectedWsPathsMap[wf.dependsOn] || [];
+                        const parentAll      = wsFiltersData[wf.dependsOn] || [];
+                        const parentIsAll    = parentSelected.length === 0 ||
+                            (parentAll.length > 0 && parentSelected.length === parentAll.length);
+
+                        if (parentWf && !parentIsAll && parentSelected.length > 0) {
+                            try {
+                                const wsForDep = dashboard.worksheets.find(w => w.name === wf.sheet);
+                                if (wsForDep) {
+                                    const parentExactCol = exactFieldNameMap[parentWf.col] || parentWf.col;
+                                    // Temporarily apply the Tool filter to get only relevant models
+                                    await wsForDep.applyFilterAsync(
+                                        parentExactCol, parentSelected, tableau.FilterUpdateType.Replace);
+
+                                    const depTable = await wsForDep.getSummaryDataAsync({
+                                        ignoreSelection: true, maxRows: configMaxRows });
+
+                                    await wsForDep.clearFilterAsync(parentExactCol);
+
+                                    const depColIdx = depTable.columns.findIndex(c =>
+                                        matchColumnName(wf.col, c.fieldName, exactFieldNameMap));
+                                    if (depColIdx >= 0) {
+                                        const seen = new Set();
+                                        depTable.data.forEach(row => {
+                                            const v = row[depColIdx] && row[depColIdx].formattedValue;
+                                            if (v && v !== 'Null' && v !== '' && v !== '_none_') seen.add(v);
+                                        });
+                                        wsFiltersData[wf.id] = Array.from(seen).sort((a, b) => a.localeCompare(b));
+
+                                        // Prune selections no longer valid under the new Tool scope
+                                        const validSet = new Set(wsFiltersData[wf.id]);
+                                        if (selectedWsPathsMap[wf.id]) {
+                                            selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
+                                                .filter(v => v === '___NONE___' || validSet.has(v));
+                                        }
+                                    }
+                                }
+                            } catch (depErr) {
+                                console.warn(`[filter-ext] Dependent filter re-query failed for "${wf.title}":`, depErr);
+                            }
+                        }
+                    }
+
                     if (!skipActiveTreeUpdate) {
                         activeWsFiltersData[wf.id] = summaryValues;
                     }
@@ -2651,6 +2780,15 @@
             renderWsPills(wfId);
             scopeDirty = true;
             markDirty();
+
+            // Re-populate any child filters that depend on this one
+            const dependentWfs = configWsFilters.filter(d => d.dependsOn === wfId);
+            if (dependentWfs.length > 0) {
+                clearTimeout(_dependentRefetchTimer);
+                _dependentRefetchTimer = setTimeout(() => {
+                    fetchWsFiltersForDependents(dependentWfs);
+                }, 300);
+            }
         }
 
         function clearWsFilterPaths(wfId) {
@@ -2659,20 +2797,107 @@
             renderWsPills(wfId);
             scopeDirty = true;
             markDirty();
+
+            // Re-populate any child filters that depend on this one
+            const dependentWfs = configWsFilters.filter(d => d.dependsOn === wfId);
+            if (dependentWfs.length > 0) {
+                clearTimeout(_dependentRefetchTimer);
+                _dependentRefetchTimer = setTimeout(() => {
+                    fetchWsFiltersForDependents(dependentWfs);
+                }, 300);
+            }
         }
 
         function toggleCheckWsNode(wfId, val) {
+            const wf     = configWsFilters.find(f => f.id === wfId);
+            const maxSel = (wf && wf.maxSelections) ? wf.maxSelections : 0;
+
             if (!selectedWsPathsMap[wfId]) selectedWsPathsMap[wfId] = [];
+
             if (selectedWsPathsMap[wfId].includes(val)) {
+                // Deselect
                 selectedWsPathsMap[wfId] = selectedWsPathsMap[wfId].filter(p => p !== val);
+                clearWsWarning(wfId);
             } else {
+                // Enforce cap before adding
+                const currentCount = (selectedWsPathsMap[wfId] || [])
+                    .filter(v => v !== '___NONE___').length;
+                if (maxSel > 0 && currentCount >= maxSel) {
+                    showWsWarning(wfId, `Maximum ${maxSel} models can be selected.`);
+                    renderWsTree(wfId);   // re-render so the checkbox snaps back to unchecked
+                    return;
+                }
                 selectedWsPathsMap[wfId] = selectedWsPathsMap[wfId].filter(p => p !== '___NONE___');
                 selectedWsPathsMap[wfId].push(val);
+                clearWsWarning(wfId);
             }
             renderWsTree(wfId);
             renderWsPills(wfId);
             scopeDirty = true;
             markDirty();
+
+            // Re-populate any child filters that depend on this one
+            const dependentWfs = configWsFilters.filter(d => d.dependsOn === wfId);
+            if (dependentWfs.length > 0) {
+                clearTimeout(_dependentRefetchTimer);
+                _dependentRefetchTimer = setTimeout(() => fetchWsFiltersForDependents(dependentWfs), 300);
+            }
+        }
+
+        async function fetchWsFiltersForDependents(wfs) {
+            const dashboard = tableau.extensions.dashboardContent.dashboard;
+            for (const wf of wfs) {
+                try {
+                    const parentWf       = configWsFilters.find(p => p.id === wf.dependsOn);
+                    const parentSelected = selectedWsPathsMap[wf.dependsOn] || [];
+                    const parentAll      = wsFiltersData[wf.dependsOn] || [];
+                    const parentIsAll    = parentSelected.length === 0 ||
+                        (parentAll.length > 0 && parentSelected.length === parentAll.length);
+
+                    if (parentWf && !parentIsAll && parentSelected.length > 0) {
+                        const ws = dashboard.worksheets.find(w => w.name === wf.sheet);
+                        if (!ws) continue;
+                        const parentExactCol = exactFieldNameMap[parentWf.col] || parentWf.col;
+                        await ws.applyFilterAsync(
+                            parentExactCol, parentSelected, tableau.FilterUpdateType.Replace);
+                        const dataTable = await ws.getSummaryDataAsync({
+                            ignoreSelection: true, maxRows: configMaxRows });
+                        await ws.clearFilterAsync(parentExactCol);
+                        const colIdx = dataTable.columns.findIndex(c =>
+                            matchColumnName(wf.col, c.fieldName, exactFieldNameMap));
+                        if (colIdx >= 0) {
+                            const seen = new Set();
+                            dataTable.data.forEach(row => {
+                                const v = row[colIdx] && row[colIdx].formattedValue;
+                                if (v && v !== 'Null' && v !== '' && v !== '_none_') seen.add(v);
+                            });
+                            wsFiltersData[wf.id] = Array.from(seen).sort((a, b) => a.localeCompare(b));
+                            const validSet = new Set(wsFiltersData[wf.id]);
+                            if (selectedWsPathsMap[wf.id]) {
+                                selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
+                                    .filter(v => v === '___NONE___' || validSet.has(v));
+                            }
+                        }
+                    } else {
+                        // Parent is "All" — restore full model list
+                        wsFiltersData[wf.id] = masterWsFiltersData[wf.id] || [];
+                    }
+                    renderWsTree(wf.id);
+                    renderWsPills(wf.id);
+                } catch (e) {
+                    console.warn(`[filter-ext] fetchWsFiltersForDependents failed for "${wf.title}":`, e);
+                }
+            }
+        }
+
+        function showWsWarning(wfId, msg) {
+            const el = document.getElementById('warning-' + wfId);
+            if (el) { el.textContent = msg; el.style.display = 'block'; }
+        }
+
+        function clearWsWarning(wfId) {
+            const el = document.getElementById('warning-' + wfId);
+            if (el) { el.textContent = ''; el.style.display = 'none'; }
         }
 
         // Merge `source` tree into `target` in place; never deletes keys.
@@ -2943,7 +3168,7 @@
             // Worksheet filters (e.g. Tool) — always included; empty selection
             // here means "clear filter / show all", which is the existing
             // semantic for the Tool dropdown.
-            configWsFilters.forEach(wf => {
+            for (const wf of configWsFilters) {
                 const exactColName = exactFieldNameMap[wf.col] || wf.col;
                 const vals = selectedWsPathsMap[wf.id] || [];
                 if (vals.includes('___NONE___') || vals.length === 0) {
@@ -2951,7 +3176,24 @@
                 } else {
                     addToApply(exactColName, wf.col, vals);
                 }
-            });
+
+                if (wf.paramName) {
+                    try {
+                        const params = await tableau.extensions.dashboardContent.dashboard
+                            .getParametersAsync();
+                        const param = params.find(p => p.name === wf.paramName);
+                        if (param) {
+                            const sel    = (selectedWsPathsMap[wf.id] || []).filter(v => v !== '___NONE___');
+                            const allVals = wsFiltersData[wf.id] || [];
+                            const isAll  = sel.length === 0 ||
+                                (allVals.length > 0 && sel.length === allVals.length);
+                            await param.changeValueAsync(isAll ? 'all' : sel.join(','));
+                        }
+                    } catch (paramErr) {
+                        console.warn(`[filter-ext] Could not set parameter "${wf.paramName}":`, paramErr);
+                    }
+                }
+            }
 
             const currentDash = tableau.extensions.dashboardContent.dashboard;
 
