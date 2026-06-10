@@ -787,6 +787,13 @@
         let activeWsFiltersData = {};
         let selectedWsPathsMap = {};
         let exactFieldNameMap = {};
+        // Pre-built parent→child value lookup for dependent wsFilters.
+        // Key: child wf.id. Value: { parentValue: Set<childValue> }.
+        // Built once per fetchDataAndRender from the source worksheet's full
+        // data (ignoreSelection: true) so we never need applyFilterAsync /
+        // clearFilterAsync to re-query — that was causing Tableau to recompute
+        // KPI tiles on every Tool selection change.
+        let dependencyLookup = {};
         let tableauListeners = [];
         // Tracks which hierarchies have completed their first data fetch — used
         // to apply "Select All" as the default only on the very first open,
@@ -2200,8 +2207,12 @@
                         console.warn(`getFiltersAsync failed for "${wf.sheet}":`, e);
                     }
 
-                    // Path 3: fetch distinct values from summary data (only if we didn't get them from Path 1)
-                    if (!summaryValues.length) {
+                    // Path 3: fetch distinct values from summary data.
+                    // Always runs for filters with dependsOn so the dependency
+                    // lookup (parent→child map) can be built from the full,
+                    // unfiltered worksheet data. For independent filters it
+                    // only runs when Path 1 didn't produce values.
+                    if (!summaryValues.length || wf.dependsOn) {
                         try {
                             const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
                             if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
@@ -2212,17 +2223,50 @@
                             );
                             if (colIdx >= 0) {
                                 exactFieldNameMap[wf.col] = dataTable.columns[colIdx].fieldName;
-                                const seen = new Set();
-                                dataTable.data.forEach(row => {
-                                    const v = row[colIdx] && row[colIdx].formattedValue;
-                                    if (v && v !== 'Null' && v !== '') seen.add(v);
-                                });
-                                summaryValues = Array.from(seen);
+                                if (!summaryValues.length) {
+                                    const seen = new Set();
+                                    dataTable.data.forEach(row => {
+                                        const v = row[colIdx] && row[colIdx].formattedValue;
+                                        if (v && v !== 'Null' && v !== '') seen.add(v);
+                                    });
+                                    summaryValues = Array.from(seen);
+                                }
                             } else {
                                 console.warn(
                                     `Column "${wf.col}" not found in worksheet "${wf.sheet}". ` +
                                     `Available: ${dataTable.columns.map(c => c.fieldName).join(', ')}`
                                 );
+                            }
+                            // Build parent→child lookup for dependent filters so
+                            // filtering is done client-side (no applyFilterAsync
+                            // needed, which would trigger Tableau recomputes).
+                            if (wf.dependsOn) {
+                                const parentWfForLookup = configWsFilters.find(p => p.id === wf.dependsOn);
+                                if (parentWfForLookup) {
+                                    const parentColIdx = dataTable.columns.findIndex(c =>
+                                        matchColumnName(parentWfForLookup.col, c.fieldName, exactFieldNameMap)
+                                    );
+                                    if (parentColIdx >= 0 && colIdx >= 0) {
+                                        const lookup = {};
+                                        dataTable.data.forEach(row => {
+                                            const pv = row[parentColIdx] && row[parentColIdx].formattedValue;
+                                            const ov = row[colIdx] && row[colIdx].formattedValue;
+                                            if (pv && ov && pv !== 'Null' && ov !== 'Null' && pv !== '' && ov !== '') {
+                                                if (!lookup[pv]) lookup[pv] = new Set();
+                                                lookup[pv].add(ov);
+                                            }
+                                        });
+                                        dependencyLookup[wf.id] = lookup;
+                                        console.log(`[filter-ext] Built dependency lookup for "${wf.title}": ${Object.keys(lookup).length} parent values`);
+                                    } else {
+                                        console.warn(
+                                            `[filter-ext] Cannot build dependency lookup for "${wf.title}": ` +
+                                            `parent col "${parentWfForLookup.col}" ` +
+                                            `${parentColIdx >= 0 ? 'found' : 'NOT FOUND'} in "${wf.sheet}". ` +
+                                            `Available: ${dataTable.columns.map(c => c.fieldName).join(', ')}`
+                                        );
+                                    }
+                                }
                             }
                         } catch (e2) {
                             console.warn(`getSummaryDataAsync failed for "${wf.sheet}":`, e2);
@@ -2240,8 +2284,10 @@
 
                     wsFiltersData[wf.id] = masterWsFiltersData[wf.id];
 
-                    // If this filter depends on another ws filter, restrict its value list
-                    // to only values present in rows where the parent filter's selection applies.
+                    // If this filter depends on another ws filter, narrow its
+                    // value list client-side using the pre-built lookup.
+                    // No Tableau API calls — temporary applyFilterAsync here
+                    // would recompute KPI tiles on every Tool selection change.
                     if (wf.dependsOn) {
                         const parentWf       = configWsFilters.find(p => p.id === wf.dependsOn);
                         const parentSelected = selectedWsPathsMap[wf.dependsOn] || [];
@@ -2249,40 +2295,17 @@
                         const parentIsAll    = parentSelected.length === 0 ||
                             (parentAll.length > 0 && parentSelected.length === parentAll.length);
 
-                        if (parentWf && !parentIsAll && parentSelected.length > 0) {
-                            try {
-                                const wsForDep = dashboard.worksheets.find(w => w.name === wf.sheet);
-                                if (wsForDep) {
-                                    const parentExactCol = exactFieldNameMap[parentWf.col] || parentWf.col;
-                                    // Temporarily apply the Tool filter to get only relevant models
-                                    await wsForDep.applyFilterAsync(
-                                        parentExactCol, parentSelected, tableau.FilterUpdateType.Replace);
-
-                                    const depTable = await wsForDep.getSummaryDataAsync({
-                                        ignoreSelection: true, maxRows: configMaxRows });
-
-                                    await wsForDep.clearFilterAsync(parentExactCol);
-
-                                    const depColIdx = depTable.columns.findIndex(c =>
-                                        matchColumnName(wf.col, c.fieldName, exactFieldNameMap));
-                                    if (depColIdx >= 0) {
-                                        const seen = new Set();
-                                        depTable.data.forEach(row => {
-                                            const v = row[depColIdx] && row[depColIdx].formattedValue;
-                                            if (v && v !== 'Null' && v !== '' && v !== '_none_') seen.add(v);
-                                        });
-                                        wsFiltersData[wf.id] = Array.from(seen).sort((a, b) => a.localeCompare(b));
-
-                                        // Prune selections no longer valid under the new Tool scope
-                                        const validSet = new Set(wsFiltersData[wf.id]);
-                                        if (selectedWsPathsMap[wf.id]) {
-                                            selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
-                                                .filter(v => v === '___NONE___' || validSet.has(v));
-                                        }
-                                    }
-                                }
-                            } catch (depErr) {
-                                console.warn(`[filter-ext] Dependent filter re-query failed for "${wf.title}":`, depErr);
+                        if (parentWf && !parentIsAll && parentSelected.length > 0 && dependencyLookup[wf.id]) {
+                            const relevant = new Set();
+                            parentSelected.forEach(pv => {
+                                const children = dependencyLookup[wf.id][pv];
+                                if (children) children.forEach(m => relevant.add(m));
+                            });
+                            wsFiltersData[wf.id] = Array.from(relevant).sort((a, b) => a.localeCompare(b));
+                            const validSet = new Set(wsFiltersData[wf.id]);
+                            if (selectedWsPathsMap[wf.id]) {
+                                selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
+                                    .filter(v => v === '___NONE___' || validSet.has(v));
                             }
                         }
                     }
@@ -2870,8 +2893,10 @@
             }
         }
 
-        async function fetchWsFiltersForDependents(wfs) {
-            const dashboard = tableau.extensions.dashboardContent.dashboard;
+        // Re-populate child ws-filter value lists when a parent filter changes.
+        // Uses the pre-built dependencyLookup — pure client-side, no Tableau
+        // API calls — so no applyFilterAsync triggers a Tableau recompute.
+        function fetchWsFiltersForDependents(wfs) {
             for (const wf of wfs) {
                 try {
                     const parentWf       = configWsFilters.find(p => p.id === wf.dependsOn);
@@ -2880,41 +2905,25 @@
                     const parentIsAll    = parentSelected.length === 0 ||
                         (parentAll.length > 0 && parentSelected.length === parentAll.length);
 
-                    if (parentWf && !parentIsAll && parentSelected.length > 0) {
-                        const ws = dashboard.worksheets.find(w => w.name === wf.sheet);
-                        if (!ws) continue;
-                        const parentExactCol = exactFieldNameMap[parentWf.col] || parentWf.col;
-                        await ws.applyFilterAsync(
-                            parentExactCol, parentSelected, tableau.FilterUpdateType.Replace);
-                        const dataTable = await ws.getSummaryDataAsync({
-                            ignoreSelection: true, maxRows: configMaxRows });
-                        await ws.clearFilterAsync(parentExactCol);
-                        const colIdx = dataTable.columns.findIndex(c =>
-                            matchColumnName(wf.col, c.fieldName, exactFieldNameMap));
-                        if (colIdx >= 0) {
-                            const seen = new Set();
-                            dataTable.data.forEach(row => {
-                                const v = row[colIdx] && row[colIdx].formattedValue;
-                                if (v && v !== 'Null' && v !== '' && v !== '_none_') seen.add(v);
-                            });
-                            wsFiltersData[wf.id] = Array.from(seen).sort((a, b) => a.localeCompare(b));
-                            const validSet = new Set(wsFiltersData[wf.id]);
-                            if (selectedWsPathsMap[wf.id]) {
-                                selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
-                                    .filter(v => v === '___NONE___' || validSet.has(v));
-                            }
-                        } else {
-                            console.warn(
-                                `[filter-ext] fetchWsFiltersForDependents: column "${wf.col}" not found in` +
-                                ` worksheet "${wf.sheet}" summary data. Available columns: ` +
-                                `${dataTable.columns.map(c => c.fieldName).join(', ')}. ` +
-                                `If this is the MODEL filter, try changing the wsFilter source sheet to` +
-                                ` one that exposes MODEL rows (e.g. "Most Used Model").`
-                            );
+                    if (!parentIsAll && parentSelected.length > 0 && dependencyLookup[wf.id]) {
+                        // Narrow child values to those belonging to selected parent values
+                        const relevant = new Set();
+                        parentSelected.forEach(pv => {
+                            const children = dependencyLookup[wf.id][pv];
+                            if (children) children.forEach(m => relevant.add(m));
+                        });
+                        wsFiltersData[wf.id] = Array.from(relevant).sort((a, b) => a.localeCompare(b));
+                        const validSet = new Set(wsFiltersData[wf.id]);
+                        if (selectedWsPathsMap[wf.id]) {
+                            selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
+                                .filter(v => v === '___NONE___' || validSet.has(v));
                         }
                     } else {
-                        // Parent is "All" — restore full model list
+                        // Parent is "All" (or lookup not yet built) — restore full list
                         wsFiltersData[wf.id] = masterWsFiltersData[wf.id] || [];
+                        if (!dependencyLookup[wf.id] && parentWf && !parentIsAll) {
+                            console.warn(`[filter-ext] fetchWsFiltersForDependents: lookup not built for "${wf.title}" yet — showing all values.`);
+                        }
                     }
                     renderWsTree(wf.id);
                     renderWsPills(wf.id);
