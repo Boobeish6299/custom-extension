@@ -2877,6 +2877,14 @@
                                 selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
                                     .filter(v => v === '___NONE___' || validSet.has(v));
                             }
+                        } else {
+                            console.warn(
+                                `[filter-ext] fetchWsFiltersForDependents: column "${wf.col}" not found in` +
+                                ` worksheet "${wf.sheet}" summary data. Available columns: ` +
+                                `${dataTable.columns.map(c => c.fieldName).join(', ')}. ` +
+                                `If this is the MODEL filter, try changing the wsFilter source sheet to` +
+                                ` one that exposes MODEL rows (e.g. "Most Used Model").`
+                            );
                         }
                     } else {
                         // Parent is "All" — restore full model list
@@ -3181,7 +3189,10 @@
                     try {
                         const params = await tableau.extensions.dashboardContent.dashboard
                             .getParametersAsync();
-                        const param = params.find(p => p.name === wf.paramName);
+                        const _pn = wf.paramName;
+                        const param = params.find(p => p.name === _pn) ||
+                                      params.find(p => p.name.toLowerCase() === _pn.toLowerCase());
+                        if (!param) console.warn(`[filter-ext] Parameter "${_pn}" not found. Available: ${params.map(p => p.name).join(', ')}`);
                         if (param) {
                             const sel    = (selectedWsPathsMap[wf.id] || []).filter(v => v !== '___NONE___');
                             const allVals = wsFiltersData[wf.id] || [];
