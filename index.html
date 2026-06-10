@@ -921,6 +921,23 @@
                 .replace(/'/g, '&#39;');
         }
 
+        function debounce(fn, ms) {
+            let timer = null;
+            return function(...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => { timer = null; fn.apply(this, args); }, ms);
+            };
+        }
+
+        // Used only inside event listeners (FilterChanged / SummaryDataChanged).
+        // Coalesces bursts of worksheet events — which fire one-per-sheet when a
+        // filter apply touches many sheets — into a single fetch. Direct calls
+        // inside applyAllFilters / userApply are intentional and stay un-debounced.
+        const debouncedFetchDataAndRender = debounce(
+            (opts) => fetchDataAndRender(opts),
+            350
+        );
+
         function suppressRefetchFor(ms) {
             suppressRefetch = true;
             if (suppressTimer) clearTimeout(suppressTimer);
@@ -960,7 +977,7 @@
                             // it reflects the new scope, but DON'T auto-select
                             // — only explicit Param/Tool changes should
                             // override the user's selection (e.g. a Cancel All).
-                            fetchDataAndRender({ autoSelect: false });
+                            debouncedFetchDataAndRender({ autoSelect: false });
                         }
                     );
                     tableauListeners.push(unregFilter);
@@ -981,7 +998,7 @@
                             if (suppressRefetch || isApplyingFilters) {
                                 return;
                             }
-                            fetchDataAndRender({ autoSelect: false });
+                            debouncedFetchDataAndRender({ autoSelect: false });
                         }
                     );
                     tableauListeners.push(unregSummary);
