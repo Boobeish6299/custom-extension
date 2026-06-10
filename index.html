@@ -635,10 +635,13 @@
             box-shadow: 0 0 0 3px rgba(48, 70, 116, 0.18);
         }
         .warning-container {
-            color: #ef4444;
+            color: #64748b;
             font-size: 11px;
             margin-top: 4px;
             display: none;
+        }
+        .warning-container.over-limit {
+            color: #ef4444;
         }
         .ws-filter-group-header {
             padding: 4px 10px 2px;
@@ -2316,8 +2319,16 @@
                                                     lookup[pv].add(ov);
                                                 }
                                             });
-                                            dependencyLookup[wf.id] = lookup;
-                                            console.log(`[filter-ext] Built dependency lookup for "${wf.title}": ${Object.keys(lookup).length} parent values`);
+                                            // Accumulate into the existing lookup instead of replacing it.
+                                            // Replacing would lose entries for tools not in the current
+                                            // filtered fetch (e.g. after Tool=Claude is applied, a re-fetch
+                                            // only sees Claude rows and the lookup would drop Windsurf models).
+                                            if (!dependencyLookup[wf.id]) dependencyLookup[wf.id] = {};
+                                            Object.keys(lookup).forEach(pv => {
+                                                if (!dependencyLookup[wf.id][pv]) dependencyLookup[wf.id][pv] = new Set();
+                                                lookup[pv].forEach(v => dependencyLookup[wf.id][pv].add(v));
+                                            });
+                                            console.log(`[filter-ext] Built dependency lookup for "${wf.title}": ${Object.keys(dependencyLookup[wf.id]).length} parent values`);
                                         } else {
                                             console.warn(
                                                 `[filter-ext] Cannot build dependency lookup for "${wf.title}": ` +
@@ -2960,7 +2971,7 @@
                 const currentCount = (selectedWsPathsMap[wfId] || [])
                     .filter(v => v !== '___NONE___').length;
                 if (maxSel > 0 && currentCount >= maxSel) {
-                    showWsWarning(wfId, `Maximum ${maxSel} models can be selected.`);
+                    showWsWarning(wfId, `Maximum ${maxSel} individual models selected`, true);
                     renderWsTree(wfId);   // re-render so the checkbox snaps back to unchecked
                     return;
                 }
@@ -2968,7 +2979,7 @@
                 selectedWsPathsMap[wfId].push(val);
                 const nowCount = selectedWsPathsMap[wfId].filter(v => v !== '___NONE___').length;
                 if (maxSel > 0 && nowCount >= maxSel) {
-                    showWsWarning(wfId, `Maximum ${maxSel} models selected.`);
+                    showWsWarning(wfId, `Maximum ${maxSel} individual models selected`);
                 } else {
                     clearWsWarning(wfId);
                 }
@@ -3026,14 +3037,14 @@
             }
         }
 
-        function showWsWarning(wfId, msg) {
+        function showWsWarning(wfId, msg, overLimit = false) {
             const el = document.getElementById('warning-' + wfId);
-            if (el) { el.textContent = msg; el.style.display = 'block'; }
+            if (el) { el.textContent = msg; el.style.display = 'block'; el.classList.toggle('over-limit', overLimit); }
         }
 
         function clearWsWarning(wfId) {
             const el = document.getElementById('warning-' + wfId);
-            if (el) { el.textContent = ''; el.style.display = 'none'; }
+            if (el) { el.textContent = ''; el.style.display = 'none'; el.classList.remove('over-limit'); }
         }
 
         // Merge `source` tree into `target` in place; never deletes keys.
