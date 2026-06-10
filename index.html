@@ -1283,23 +1283,49 @@
                     return;
                 }
 
-                // Use getSummaryDataAsync to read the column names; maxRows:1 is enough
-                // since we only need the column metadata, not data rows.
-                const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 1 });
-                const cols = dataTable.columns.map(c => c.fieldName).sort((a, b) => a.localeCompare(b));
+                // Pivot worksheets (like Active Users) return only "Measure Names" /
+                // "Measure Values" from getSummaryDataAsync, hiding all dimension columns.
+                // Pull from BOTH sources and merge:
+                //   1. getFiltersAsync  — filter-shelf entries = all dimension fields
+                //   2. getSummaryDataAsync — catches non-pivot worksheets and measures
+                const titleCase = s => s.replace(/\b\w/g, c => c.toUpperCase());
+                const SKIP = new Set(['measure names', 'measure values']);
+                // Map: cleanedLower → displayLabel  (first writer wins for dedup)
+                const seen = new Map();
+
+                // 1. Filter shelf — survives pivot mode
+                try {
+                    const filters = await ws.getFiltersAsync();
+                    filters.forEach(f => {
+                        const clean = getCleanFieldName(f.fieldName || '');
+                        if (!clean || SKIP.has(clean)) return;
+                        if (!seen.has(clean)) seen.set(clean, titleCase(clean));
+                    });
+                } catch (e) { /* sheet may not expose getFiltersAsync */ }
+
+                // 2. Summary data — non-pivot sheets / extra columns
+                try {
+                    const dt = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 1 });
+                    dt.columns.forEach(c => {
+                        const clean = getCleanFieldName(c.fieldName || '');
+                        if (!clean || SKIP.has(clean)) return;
+                        if (!seen.has(clean)) seen.set(clean, titleCase(clean));
+                    });
+                } catch (e) { /* non-critical */ }
+
+                if (seen.size === 0) {
+                    colSelect.innerHTML = '<option value="">— No columns found —</option>';
+                    return;
+                }
+
+                const labels = Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+                const currentClean = currentCol ? getCleanFieldName(currentCol) : '';
 
                 colSelect.innerHTML = '<option value="">— Select column —</option>' +
-                    cols.map(c => `<option value="${c}"${c === currentCol ? ' selected' : ''}>${c}</option>`).join('');
-
-                // If no column matched yet (first render with a saved friendly name),
-                // try a case-insensitive match so saved values like "Model" match "Model".
-                if (currentCol && !cols.includes(currentCol)) {
-                    const lower = currentCol.toLowerCase();
-                    const fuzzy = cols.find(c => c.toLowerCase() === lower);
-                    if (fuzzy) {
-                        colSelect.value = fuzzy;
-                    }
-                }
+                    labels.map(label => {
+                        const sel = currentClean && getCleanFieldName(label) === currentClean ? ' selected' : '';
+                        return `<option value="${label}"${sel}>${label}</option>`;
+                    }).join('');
             } catch (err) {
                 colSelect.innerHTML = '<option value="">— Error loading columns —</option>';
                 console.warn('[filter-ext] populateWsColDropdown failed:', err);
