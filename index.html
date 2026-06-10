@@ -640,6 +640,21 @@
             margin-top: 4px;
             display: none;
         }
+        .ws-filter-group-header {
+            padding: 4px 10px 2px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            color: #64748b;
+            background: #f1f5f9;
+            margin-top: 4px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .ws-filter-group-header.first-group {
+            margin-top: 0;
+            border-top: none;
+        }
     </style>
 </head>
 
@@ -2585,32 +2600,55 @@
             };
             container.appendChild(allItem);
 
-            // Individual checkboxes — filtered by search term
-            values
-                .filter(val => !term || val.toLowerCase().includes(term))
-                .forEach(val => {
-                    const isChecked = selected.includes(val);
-                    const item = document.createElement('div');
-                    item.className = 'ws-filter-check-item';
+            // Individual checkboxes — grouped by parent tool when applicable
+            const wfConf = configWsFilters.find(f => f.id === wfId);
+            const parentSel = wfConf && wfConf.dependsOn ? (selectedWsPathsMap[wfConf.dependsOn] || []) : [];
+            const parentAllVals = wfConf && wfConf.dependsOn ? (wsFiltersData[wfConf.dependsOn] || []) : [];
+            const parentIsAll = parentSel.length === 0 || (parentAllVals.length > 0 && parentSel.length === parentAllVals.length);
+            const shouldGroup = wfConf && wfConf.dependsOn && !parentIsAll && parentSel.length > 1 && dependencyLookup[wfId];
 
-                    const cb = document.createElement('input');
-                    cb.type = 'checkbox';
-                    cb.className = 'ws-cb-native';
-                    cb.checked = isChecked;
-                    const label = document.createElement('span');
-                    label.className = 'ws-filter-check-label';
-                    label.textContent = val;
-                    item.appendChild(cb);
-                    item.appendChild(label);
-                    item.onclick = (e) => {
-                        e.stopPropagation();
-                        if (e.target === cb) return;
-                        cb.checked = !cb.checked;
-                        cb.dispatchEvent(new Event('change'));
-                    };
-                    cb.onchange = () => toggleCheckWsNode(wfId, val);
-                    container.appendChild(item);
+            function appendWsCheckItem(val) {
+                const isChecked = selected.includes(val);
+                const item = document.createElement('div');
+                item.className = 'ws-filter-check-item';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'ws-cb-native';
+                cb.checked = isChecked;
+                const label = document.createElement('span');
+                label.className = 'ws-filter-check-label';
+                label.textContent = val;
+                item.appendChild(cb);
+                item.appendChild(label);
+                item.onclick = (e) => {
+                    e.stopPropagation();
+                    if (e.target === cb) return;
+                    cb.checked = !cb.checked;
+                    cb.dispatchEvent(new Event('change'));
+                };
+                cb.onchange = () => toggleCheckWsNode(wfId, val);
+                container.appendChild(item);
+            }
+
+            if (shouldGroup) {
+                const valSet = new Set(values);
+                let firstGroup = true;
+                parentSel.forEach(toolName => {
+                    const toolModels = (dependencyLookup[wfId][toolName] || [])
+                        .filter(v => valSet.has(v) && (!term || v.toLowerCase().includes(term)));
+                    if (!toolModels.length) return;
+                    const header = document.createElement('div');
+                    header.className = 'ws-filter-group-header' + (firstGroup ? ' first-group' : '');
+                    header.textContent = toolName;
+                    container.appendChild(header);
+                    firstGroup = false;
+                    toolModels.forEach(appendWsCheckItem);
                 });
+            } else {
+                values
+                    .filter(val => !term || val.toLowerCase().includes(term))
+                    .forEach(appendWsCheckItem);
+            }
 
             // Update footer count
             const footer = document.getElementById('ws-popup-footer-' + wfId);
@@ -2878,7 +2916,12 @@
                 }
                 selectedWsPathsMap[wfId] = selectedWsPathsMap[wfId].filter(p => p !== '___NONE___');
                 selectedWsPathsMap[wfId].push(val);
-                clearWsWarning(wfId);
+                const nowCount = selectedWsPathsMap[wfId].filter(v => v !== '___NONE___').length;
+                if (maxSel > 0 && nowCount >= maxSel) {
+                    showWsWarning(wfId, `Maximum ${maxSel} models selected.`);
+                } else {
+                    clearWsWarning(wfId);
+                }
             }
             renderWsTree(wfId);
             renderWsPills(wfId);
@@ -3555,6 +3598,23 @@
             // resulting cascade doesn't trigger N redundant refetches.
             suppressRefetchFor(30000);
             saveStateToStorage();
+
+            // If the user is selecting ALL top-level leaders (i.e. removing the
+            // team restriction), activeTreesData may still hold a stale narrowed
+            // subset from the last Apply. The post-apply event that would fix it
+            // is suppressed for 30 s, so renderTree would grey out everyone not
+            // in that subset. Promote masterTreesData → activeTreesData eagerly
+            // for any filter whose explicit set covers every top-level master key.
+            configFilters.forEach(f => {
+                const master = masterTreesData[f.id];
+                if (!master || !Object.keys(master).length) return;
+                const allTopKeys = Object.keys(master);
+                const explicitTop = new Set((explicitPathsMap[f.id] || []).filter(p => !p.includes('|')));
+                if (allTopKeys.length > 0 && allTopKeys.every(k => explicitTop.has(k))) {
+                    activeTreesData[f.id] = master;
+                }
+            });
+
             configFilters.forEach(f => { renderPills(f.id); renderTree(f.id); });
             configWsFilters.forEach(wf => { renderWsPills(wf.id); renderWsTree(wf.id); });
 
