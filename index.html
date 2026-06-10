@@ -2258,7 +2258,9 @@
                             if (wf.dependsOn) {
                                 const parentWfForLookup = configWsFilters.find(p => p.id === wf.dependsOn);
                                 if (parentWfForLookup) {
+                                    const parentExactFieldName = exactFieldNameMap[parentWfForLookup.col];
                                     const parentColIdx = dataTable.columns.findIndex(c =>
+                                        (parentExactFieldName && c.fieldName === parentExactFieldName) ||
                                         matchColumnName(parentWfForLookup.col, c.fieldName, exactFieldNameMap)
                                     );
                                     if (parentColIdx >= 0 && colIdx >= 0) {
@@ -2634,7 +2636,8 @@
                 const valSet = new Set(values);
                 let firstGroup = true;
                 parentSel.forEach(toolName => {
-                    const toolModels = (dependencyLookup[wfId][toolName] || [])
+                    const toolModels = Array.from(dependencyLookup[wfId][toolName] || [])
+                        .sort((a, b) => a.localeCompare(b))
                         .filter(v => valSet.has(v) && (!term || v.toLowerCase().includes(term)));
                     if (!toolModels.length) return;
                     const header = document.createElement('div');
