@@ -3156,13 +3156,16 @@
                     renderWsTree(wf.id);
                     renderWsPills(wf.id);
                     
-                    // Clear or show warnings depending on the selection count compared to maxSelections
+                    // Clear or show warnings depending on the selection count compared to maxSelections.
+                    // Do not show the warning if the selection is functionally "All" models under the current tool scope.
                     const _wfConf = configWsFilters.find(f => f.id === wf.id);
                     const _maxSel = (_wfConf && _wfConf.maxSelections) ? _wfConf.maxSelections : 0;
-                    const _selCount = (selectedWsPathsMap[wf.id] || []).filter(v => v !== '___NONE___').length;
-                    if (_maxSel > 0 && _selCount > _maxSel) {
+                    const _allVals = wsFiltersData[wf.id] || [];
+                    const _sel = (selectedWsPathsMap[wf.id] || []).filter(v => v !== '___NONE___');
+                    const _isAll = _sel.length === 0 || (_allVals.length > 0 && _sel.length === _allVals.length);
+                    if (_maxSel > 0 && _sel.length > _maxSel && !_isAll) {
                         showWsWarning(wf.id, `Maximum ${_maxSel} individual models selected`);
-                    } else if (_maxSel === 0 || _selCount <= _maxSel) {
+                    } else {
                         clearWsWarning(wf.id);
                     }
                 } catch (e) {
