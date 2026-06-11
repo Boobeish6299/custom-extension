@@ -2443,8 +2443,21 @@
                             const validSet = new Set(wsFiltersData[wf.id]);
                             const current = selectedWsPathsMap[wf.id];
                             
-                            // Preserve manual selections if the user picked a custom subset of models.
-                            const hasCustomSelection = current && current.length > 0 && current.length < wsFiltersData[wf.id].length && !current.includes('___NONE___');
+                            // Determine the total number of available models for the currently selected tools
+                            let totalAvailableCount = (masterWsFiltersData[wf.id] || []).length;
+                            if (parentWf && dependencyLookup[wf.id]) {
+                                if (!parentIsAll && parentSelected.length > 0) {
+                                    const relevant = new Set();
+                                    parentSelected.forEach(pv => {
+                                        const children = dependencyLookup[wf.id][pv];
+                                        if (children) children.forEach(m => relevant.add(m));
+                                    });
+                                    totalAvailableCount = relevant.size;
+                                }
+                            }
+
+                            // Preserve manual selections if the user picked a custom subset of the total available models.
+                            const hasCustomSelection = current && current.length > 0 && current.length < totalAvailableCount && !current.includes('___NONE___');
                             if ((autoSelect && !hasCustomSelection) || !current || current.length === 0) {
                                 if (parentIsAll) {
                                     selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
