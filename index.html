@@ -3082,10 +3082,24 @@
                             if (children) children.forEach(m => relevant.add(m));
                         });
                         wsFiltersData[wf.id] = Array.from(relevant).sort((a, b) => a.localeCompare(b));
-                        const validSet = new Set(wsFiltersData[wf.id]);
-                        if (selectedWsPathsMap[wf.id]) {
-                            selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
-                                .filter(v => v === '___NONE___' || validSet.has(v));
+                        
+                        // Automatically select based on parent selection
+                        const isGCA = (pv) => pv && pv.toLowerCase().includes('google code assist');
+                        const isWindsurf = (pv) => pv && pv.toLowerCase().includes('windsurf');
+                        const hasGCA = parentSelected.some(isGCA);
+                        const hasWindsurf = parentSelected.some(isWindsurf);
+
+                        if (hasGCA && !hasWindsurf) {
+                            // Automatically select Gemini models
+                            selectedWsPathsMap[wf.id] = wsFiltersData[wf.id].filter(v => 
+                                v.toLowerCase().startsWith('gemini') || v.toLowerCase().includes('gemini')
+                            );
+                        } else if (hasWindsurf && !hasGCA) {
+                            // Automatically select all models for Windsurf
+                            selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
+                        } else {
+                            // Fallback / both selected: select all models
+                            selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
                         }
                     } else {
                         // Parent is "All" (or lookup not yet built) — restore full list
@@ -3093,15 +3107,21 @@
                         if (!dependencyLookup[wf.id] && parentWf && !parentIsAll) {
                             console.warn(`[filter-ext] fetchWsFiltersForDependents: lookup not built for "${wf.title}" yet — showing all values.`);
                         }
+                        // Automatically select all models when parent is "All"
+                        selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
                     }
                     renderWsTree(wf.id);
                     renderWsPills(wf.id);
-                    // Clear any stale over-limit warning — selection may have changed
-                    // (e.g. parent switched to "All", restoring the full value list).
+                    
+                    // Clear or show warnings depending on the selection count compared to maxSelections
                     const _wfConf = configWsFilters.find(f => f.id === wf.id);
                     const _maxSel = (_wfConf && _wfConf.maxSelections) ? _wfConf.maxSelections : 0;
                     const _selCount = (selectedWsPathsMap[wf.id] || []).filter(v => v !== '___NONE___').length;
-                    if (_maxSel === 0 || _selCount <= _maxSel) clearWsWarning(wf.id);
+                    if (_maxSel > 0 && _selCount > _maxSel) {
+                        showWsWarning(wf.id, `Maximum ${_maxSel} individual models selected`);
+                    } else if (_maxSel === 0 || _selCount <= _maxSel) {
+                        clearWsWarning(wf.id);
+                    }
                 } catch (e) {
                     console.warn(`[filter-ext] fetchWsFiltersForDependents failed for "${wf.title}":`, e);
                 }
