@@ -2443,7 +2443,9 @@
                             const validSet = new Set(wsFiltersData[wf.id]);
                             const current = selectedWsPathsMap[wf.id];
                             
-                            if (autoSelect || !current || current.length === 0) {
+                            // Preserve manual selections if the user picked a custom subset of models.
+                            const hasCustomSelection = current && current.length > 0 && current.length < wsFiltersData[wf.id].length && !current.includes('___NONE___');
+                            if ((autoSelect && !hasCustomSelection) || !current || current.length === 0) {
                                 if (parentIsAll) {
                                     selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
                                 } else {
@@ -3432,25 +3434,23 @@
                     }
                     walkTree(tree, []);
 
-                    // FIX: If any deeper level is filtered, all shallower levels must also be filtered
-                    // to prevent shallower leaf nodes from being excluded by deeper filters.
-                    let anyDeeperApplied = false;
-                    for (let i = cols.length - 1; i >= 0; i--) {
-                        if (filterPerLevel[i].apply) {
-                            anyDeeperApplied = true;
-                        } else if (anyDeeperApplied) {
-                            filterPerLevel[i].apply = true;
-                        }
-                    }
-
-                    // FIX: For any applied level from index 1 onwards, add null/blank values
-                    // so that leaf nodes at shallower levels are not excluded.
-                    for (let i = 1; i < cols.length; i++) {
-                        if (filterPerLevel[i].apply) {
+                    // FIX: Always filter all levels in the hierarchy to ensure consistent filter state,
+                    // and inject null/blank values from Level 2 onwards to prevent shallower leaf nodes
+                    // from being filtered out.
+                    for (let i = 0; i < cols.length; i++) {
+                        filterPerLevel[i].apply = true;
+                        if (i >= 1) {
                             filterPerLevel[i].values.add(null);
                             filterPerLevel[i].values.add("");
+                            filterPerLevel[i].values.add("null");
                             filterPerLevel[i].values.add("Null");
+                            filterPerLevel[i].values.add("NULL");
+                            filterPerLevel[i].values.add("(null)");
+                            filterPerLevel[i].values.add("(Null)");
+                            filterPerLevel[i].values.add("(NULL)");
                             filterPerLevel[i].values.add("%null%");
+                            filterPerLevel[i].values.add("%Null%");
+                            filterPerLevel[i].values.add("%NULL%");
                         }
                     }
 
@@ -3678,11 +3678,11 @@
                     if (clearedClean.has(cleanClear)) { summary.skipped++; return; } // duplicate name form of an already-cleared column
                     clearedClean.add(cleanClear);
                     const cacheKey = `${ws.name}::${col}`;
-                    // Only clear a column we actually applied a real filter to.
-                    // If we never filtered it, there is nothing to undo and the
-                    // clearFilterAsync would be a wasted server round-trip (a
-                    // live-source re-query) for a filter that was never set.
-                    if (!appliedFilterKeys.has(cacheKey)) {
+                    // Skip clearing only if we are absolutely sure it is already cleared.
+                    // This bypasses the extension-lifetime cache (appliedFilterKeys) so that
+                    // Tableau filters that are active on initial page load (or saved in the workbook)
+                    // are correctly cleared.
+                    if (lastAppliedFilterState[cacheKey] === 'CLEAR') {
                         summary.skipped++;
                         return;
                     }
