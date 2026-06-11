@@ -2686,7 +2686,12 @@
             const parentSel = wfConf && wfConf.dependsOn ? (selectedWsPathsMap[wfConf.dependsOn] || []) : [];
             const parentAllVals = wfConf && wfConf.dependsOn ? (wsFiltersData[wfConf.dependsOn] || []) : [];
             const parentIsAll = parentSel.length === 0 || (parentAllVals.length > 0 && parentSel.length === parentAllVals.length);
-            const shouldGroup = wfConf && wfConf.dependsOn && !parentIsAll && parentSel.length > 1 && dependencyLookup[wfId];
+            // When parent is "All", iterate every known parent value for group headers.
+            // When parent has a specific selection, iterate only the selected parents.
+            const activeParentVals = (!parentIsAll && parentSel.length > 0) ? parentSel : parentAllVals;
+            // Group when: dependency set, lookup built, and 2+ parent groups to show.
+            // Single-tool selection renders a flat list (no redundant group header).
+            const shouldGroup = wfConf && wfConf.dependsOn && dependencyLookup[wfId] && activeParentVals.length > 1;
 
             function appendWsCheckItem(val) {
                 const isChecked = selected.includes(val);
@@ -2714,7 +2719,7 @@
             if (shouldGroup) {
                 const valSet = new Set(values);
                 let firstGroup = true;
-                parentSel.forEach(toolName => {
+                activeParentVals.forEach(toolName => {
                     const toolModels = Array.from(dependencyLookup[wfId][toolName] || [])
                         .sort((a, b) => a.localeCompare(b))
                         .filter(v => valSet.has(v) && (!term || v.toLowerCase().includes(term)));
@@ -3139,7 +3144,7 @@
         const SYNC_PARAM_NAME = 'Hierarchy Sync';
         let _syncParam = null;          // cached Parameter object
         let _syncParamMissing = false;  // warn once, then no-op
-        let _syncParamState = { applyActive: '', stamp: null, paths: [] };
+        let _syncParamState = { applyActive: '', stamp: null, paths: [], tools: [] };
 
         // Cached result of getParametersAsync() — reused within a Phase 1→Phase 2 window
         // to avoid redundant round-trips. Invalidated on every ParameterChanged event so
@@ -3209,6 +3214,16 @@
                         if (p && p !== '___NONE___' && p !== '___CANCELLED___') explicit.push(p);
                     });
                 });
+                // Collect selected tool values from root wsFilters (no dependsOn, no paramName).
+                // Empty array means "All" — the viz extension uses this for reactive context bar
+                // updates and KPI tile visibility without waiting for the full data fetch.
+                const selectedTools = [];
+                configWsFilters
+                    .filter(wf => !wf.dependsOn && !wf.paramName)
+                    .forEach(wf => {
+                        const picks = selectedWsPathsMap[wf.id] || [];
+                        picks.filter(v => v && v !== '___NONE___').forEach(v => selectedTools.push(v));
+                    });
                 // NOTE: the old 'teamExplicitPaths'/'teamSelectionStamp' settings
                 // writes were removed entirely. They were an audit log nothing
                 // reads (settings never cross extension instances), yet each
@@ -3221,8 +3236,8 @@
                 // tree's debouncedFetch — the tree's fetch signature includes
                 // these paths, so this ordering guarantees its first post-apply
                 // signature read already sees the new selection (cache miss).
-                await writeSyncParam({ paths: explicit, stamp: Date.now() });
-                console.log(`[filter-ext] syncSelectionToSettings: wrote teamExplicitPaths=${JSON.stringify(explicit)}`);
+                await writeSyncParam({ paths: explicit, stamp: Date.now(), tools: selectedTools });
+                console.log(`[filter-ext] syncSelectionToSettings: paths=${JSON.stringify(explicit)}, tools=${JSON.stringify(selectedTools)}`);
             } catch (e) {
                 console.warn('[filter-ext] settings sync error:', e);
             }
