@@ -1069,9 +1069,25 @@
                 const forceRefreshStr = tableau.extensions.settings.get('forceRefreshSheets');
                 const maxRowsStr = tableau.extensions.settings.get('maxRows');
 
-                try { if (filtersStr) configFilters = JSON.parse(filtersStr); } catch (e) { configFilters = []; }
+                try {
+                    if (filtersStr) {
+                        configFilters = JSON.parse(filtersStr);
+                        configFilters.forEach(f => {
+                            if (!f.skipSheets) f.skipSheets = [];
+                            if (f.onlyApplyToSource === undefined) f.onlyApplyToSource = false;
+                        });
+                    }
+                } catch (e) { configFilters = []; }
                 try { if (paramsStr) configParams = JSON.parse(paramsStr); } catch (e) { configParams = []; }
-                try { if (wsFiltersStr) configWsFilters = JSON.parse(wsFiltersStr); } catch (e) { configWsFilters = []; }
+                try {
+                    if (wsFiltersStr) {
+                        configWsFilters = JSON.parse(wsFiltersStr);
+                        configWsFilters.forEach(wf => {
+                            if (!wf.skipSheets) wf.skipSheets = [];
+                            if (wf.onlyApplyToSource === undefined) wf.onlyApplyToSource = false;
+                        });
+                    }
+                } catch (e) { configWsFilters = []; }
                 try { if (skipSheetsStr) configSkipSheets = JSON.parse(skipSheetsStr); } catch (e) { configSkipSheets = []; }
                 try { if (forceRefreshStr) configForceRefreshSheets = JSON.parse(forceRefreshStr); } catch (e) { configForceRefreshSheets = []; }
                 { const n = parseInt(maxRowsStr, 10); configMaxRows = Number.isFinite(n) && n > 0 ? n : 0; }
@@ -1217,6 +1233,7 @@
             configFilters.forEach(f => {
                 const div = document.createElement('div');
                 div.style.cssText = 'border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:4px; background:#f9f9f9;';
+                const skipStr = f.skipSheets ? f.skipSheets.join(',') : '';
                 div.innerHTML = `
                     <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
                         <input type="text" id="cfg-title-${f.id}" value="${f.title}" style="width:80%; font-weight:bold;"/>
@@ -1226,6 +1243,12 @@
                     <select id="cfg-sheet-${f.id}">${sheetOptions}</select>
                     <label>Columns (comma-separated):</label>
                     <input type="text" id="cfg-cols-${f.id}" value="${f.cols.join(',')}" />
+                    <label style="margin-top: 5px; display: block;">Exclude Worksheets (comma-separated):</label>
+                    <input type="text" id="cfg-skipsheets-${f.id}" value="${skipStr}" placeholder="e.g. Sheet A, Sheet B" style="width:100%; padding:6px; margin-top:5px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;"/>
+                    <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="cfg-onlysrc-${f.id}" ${f.onlyApplyToSource ? 'checked' : ''} style="margin:0; width:auto;"/>
+                        <label for="cfg-onlysrc-${f.id}" style="margin:0; display:inline; font-weight:normal;">Only Apply to Source Sheet (Tableau Native Sharing)</label>
+                    </div>
                 `;
                 container.appendChild(div);
                 document.getElementById(`cfg-sheet-${f.id}`).value = f.sheet;
@@ -1233,7 +1256,7 @@
         }
 
         function addConfigFilter() {
-            configFilters.push({ id: 'f' + Date.now(), title: 'New Hierarchy', sheet: '', cols: ['Column1'] });
+            configFilters.push({ id: 'f' + Date.now(), title: 'New Hierarchy', sheet: '', cols: ['Column1'], skipSheets: [], onlyApplyToSource: false });
             renderConfigFilters();
         }
 
@@ -1272,6 +1295,7 @@
             configWsFilters.forEach(wf => {
                 const div = document.createElement('div');
                 div.style.cssText = 'border:1px solid #ddd; padding:10px; margin-bottom:10px; border-radius:4px; background:#f9f9f9;';
+                const skipStr = wf.skipSheets ? wf.skipSheets.join(',') : '';
                 div.innerHTML = `
                     <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
                         <input type="text" id="cfg-wstitle-${wf.id}" value="${wf.title}" style="width:80%; font-weight:bold;"/>
@@ -1294,6 +1318,12 @@
                     </select>
                     <label>Linked Tableau Parameter Name (optional):</label>
                     <input type="text" id="cfg-wsparam-${wf.id}" value="${wf.paramName || ''}" placeholder="e.g. Selected Models" style="width:100%; padding:6px; margin-top:5px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;"/>
+                    <label style="margin-top: 5px; display: block;">Exclude Worksheets (comma-separated):</label>
+                    <input type="text" id="cfg-wsskipsheets-${wf.id}" value="${skipStr}" placeholder="e.g. Sheet A, Sheet B" style="width:100%; padding:6px; margin-top:5px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;"/>
+                    <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
+                        <input type="checkbox" id="cfg-wsonlysrc-${wf.id}" ${wf.onlyApplyToSource ? 'checked' : ''} style="margin:0; width:auto;"/>
+                        <label for="cfg-wsonlysrc-${wf.id}" style="margin:0; display:inline; font-weight:normal;">Only Apply to Source Sheet (Tableau Native Sharing)</label>
+                    </div>
                 `;
                 container.appendChild(div);
                 document.getElementById(`cfg-wssheet-${wf.id}`).value = wf.sheet;
@@ -1383,7 +1413,7 @@
         }
 
         function addConfigWsFilter() {
-            configWsFilters.push({ id: 'wf' + Date.now(), title: 'New Worksheet Filter', sheet: '', col: '', maxSelections: 0, dependsOn: '', paramName: '' });
+            configWsFilters.push({ id: 'wf' + Date.now(), title: 'New Worksheet Filter', sheet: '', col: '', maxSelections: 0, dependsOn: '', paramName: '', skipSheets: [], onlyApplyToSource: false });
             renderConfigWsFilters();
         }
 
@@ -1397,6 +1427,10 @@
                 f.title = document.getElementById('cfg-title-' + f.id).value;
                 f.sheet = document.getElementById('cfg-sheet-' + f.id).value;
                 f.cols = document.getElementById('cfg-cols-' + f.id).value.split(',').map(s => s.trim()).filter(s => s !== '');
+                const skipEl = document.getElementById('cfg-skipsheets-' + f.id);
+                const onlySrcEl = document.getElementById('cfg-onlysrc-' + f.id);
+                f.skipSheets = skipEl ? skipEl.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+                f.onlyApplyToSource = onlySrcEl ? onlySrcEl.checked : false;
             });
             configParams.forEach(p => {
                 p.title = document.getElementById('cfg-ptitle-' + p.id).value;
@@ -1409,9 +1443,13 @@
                 const maxSelEl  = document.getElementById('cfg-wsmaxsel-'  + wf.id);
                 const dependsEl = document.getElementById('cfg-wsdepends-' + wf.id);
                 const paramEl   = document.getElementById('cfg-wsparam-'   + wf.id);
+                const skipEl    = document.getElementById('cfg-wsskipsheets-' + wf.id);
+                const onlySrcEl = document.getElementById('cfg-wsonlysrc-' + wf.id);
                 wf.maxSelections = maxSelEl  ? (parseInt(maxSelEl.value,  10) || 0) : 0;
                 wf.dependsOn     = dependsEl ? dependsEl.value : '';
                 wf.paramName     = paramEl   ? paramEl.value.trim() : '';
+                wf.skipSheets    = skipEl    ? skipEl.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+                wf.onlyApplyToSource = onlySrcEl ? onlySrcEl.checked : false;
             });
             configSkipSheets = document.getElementById('cfg-skip-sheets').value
                 .split(',').map(s => s.trim()).filter(s => s !== '');
@@ -3437,25 +3475,55 @@
 
             const currentDash = tableau.extensions.dashboardContent.dashboard;
 
-            // The filter must NOT be applied back to its own source — otherwise
-            // the source data gets self-filtered and the dropdown/tree shrinks
-            // to the current selection on every refetch.
+            // Build a map of columns to skip for each worksheet.
+            // 1. A filter must NOT be applied back to its own source sheet — otherwise
+            //    the source data gets self-filtered and the dropdown/tree shrinks.
+            // 2. A filter must NOT be applied to any worksheet explicitly excluded
+            //    in the filter's "Exclude Worksheets" configuration setting.
+            // 3. If "Only Apply to Source" is enabled, the filter is skipped on all
+            //    worksheets except the source worksheet (Tableau Native Sharing).
             const skipColsPerSheet = {};
-            configFilters.forEach(f => {
-                if (!f.sheet) return;
-                if (!skipColsPerSheet[f.sheet]) skipColsPerSheet[f.sheet] = new Set();
-                f.cols.forEach(c => {
-                    skipColsPerSheet[f.sheet].add(c);
-                    const exactName = exactFieldNameMap[c];
-                    if (exactName) skipColsPerSheet[f.sheet].add(exactName);
+
+            // Helper to check if a sheet name matches any pattern in a list (case-insensitive substring/exact)
+            const matchesSkipPattern = (sheetName, patterns) => {
+                if (!sheetName || !patterns || !patterns.length) return false;
+                const lowerSheet = sheetName.toLowerCase();
+                return patterns.some(pat => {
+                    const p = (pat || '').trim().toLowerCase();
+                    return p && (lowerSheet === p || lowerSheet.includes(p));
                 });
-            });
-            configWsFilters.forEach(wf => {
-                if (!wf.sheet) return;
-                if (!skipColsPerSheet[wf.sheet]) skipColsPerSheet[wf.sheet] = new Set();
-                skipColsPerSheet[wf.sheet].add(wf.col);
-                const exactName = exactFieldNameMap[wf.col];
-                if (exactName) skipColsPerSheet[wf.sheet].add(exactName);
+            };
+
+            currentDash.worksheets.forEach(ws => {
+                const skipSet = new Set();
+
+                // Check Hierarchy Filters
+                configFilters.forEach(f => {
+                    const isSource = f.sheet && f.sheet === ws.name;
+                    const shouldSkip = f.onlyApplyToSource ? !isSource : (isSource || (f.skipSheets && matchesSkipPattern(ws.name, f.skipSheets)));
+                    if (shouldSkip) {
+                        f.cols.forEach(c => {
+                            skipSet.add(c);
+                            const exactName = exactFieldNameMap[c];
+                            if (exactName) skipSet.add(exactName);
+                        });
+                    }
+                });
+
+                // Check Worksheet Filters
+                configWsFilters.forEach(wf => {
+                    const isSource = wf.sheet && wf.sheet === ws.name;
+                    const shouldSkip = wf.onlyApplyToSource ? !isSource : (isSource || (wf.skipSheets && matchesSkipPattern(ws.name, wf.skipSheets)));
+                    if (shouldSkip) {
+                        skipSet.add(wf.col);
+                        const exactName = exactFieldNameMap[wf.col];
+                        if (exactName) skipSet.add(exactName);
+                    }
+                });
+
+                if (skipSet.size > 0) {
+                    skipColsPerSheet[ws.name] = skipSet;
+                }
             });
 
             // Sheets that must NEVER receive applyFilterAsync / clearFilterAsync.
