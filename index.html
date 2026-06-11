@@ -1012,7 +1012,7 @@
 
             // ---- 🔧 NEW: Parameter listeners ----
             try {
-                const parameters = await dash.getParametersAsync();
+                const parameters = await _getParametersAsync();
                 configParams.forEach(pConf => {
                     const p = parameters.find(x => x.name === pConf.paramName);
                     if (!p) return;
@@ -1023,6 +1023,7 @@
                                 // Always refresh the cached param object so
                                 // subsequent reads see the new value.
                                 paramObjects[pConf.id] = p;
+                                _parameterListCache = null; // value changed — next call fetches fresh
                                 if (userApplyInProgress) {
                                     // We pushed this change as part of the
                                     // Apply flow; the apply itself will run
@@ -1445,7 +1446,7 @@
         // --- Parameter Logic ---
         async function loadAndRenderParameters() {
             const dashboard = tableau.extensions.dashboardContent.dashboard;
-            const parameters = await dashboard.getParametersAsync();
+            const parameters = await _getParametersAsync();
 
             configParams.forEach(pConf => {
                 const p = parameters.find(x => x.name === pConf.paramName);
@@ -1590,7 +1591,7 @@
             async function afterParamChange() {
                 try {
                     const dashboard = tableau.extensions.dashboardContent.dashboard;
-                    const latestParams = await dashboard.getParametersAsync();
+                    const latestParams = await _getParametersAsync();
                     const fresh = latestParams.find(x => x.name === pConf.paramName);
                     if (fresh) paramObjects[pId] = fresh;
                 } catch (e) {
@@ -1971,7 +1972,7 @@
 
             // ----- Parameters: refresh cached objects -----
             try {
-                const parameters = await dashboard.getParametersAsync();
+                const parameters = await _getParametersAsync();
                 configParams.forEach(pConf => {
                     const p = parameters.find(x => x.name === pConf.paramName);
                     if (p) paramObjects[pConf.id] = p;
@@ -2174,6 +2175,11 @@
             }));
 
             // ----- Worksheet filters (Team, etc.) -----
+            // getSummaryData cache: reuse a single fetch when multiple wsFilters
+            // read the same source worksheet (e.g. Tool + Model both on
+            // "Tool Model Mapping"). Only safe once every wsFilter for that sheet
+            // has completed its first-fetch filter clear — checked inline below.
+            const _wsDataTableCache = {};
             for (const wf of configWsFilters) {
                 try {
                     const ws = dashboard.worksheets.find(w => w.name === wf.sheet);
@@ -2256,7 +2262,18 @@
                     // only runs when Path 1 didn't produce values.
                     if (!summaryValues.length || wf.dependsOn) {
                         try {
-                            const dataTable = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
+                            // Safe to share a cached fetch when all wsFilters on this sheet
+                            // have already done their first-fetch clear — the data is
+                            // identical and we avoid a redundant Snowflake round-trip.
+                            const _sheetAllCleared = configWsFilters
+                                .filter(w => w.sheet === wf.sheet)
+                                .every(w => firstFetchDone['ws_' + w.id]);
+                            if (!_sheetAllCleared || !_wsDataTableCache[ws.name]) {
+                                _wsDataTableCache[ws.name] = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
+                            } else {
+                                console.log(`[filter-ext] reusing cached getSummaryData for "${ws.name}" (wsFilter "${wf.title}")`);
+                            }
+                            const dataTable = _wsDataTableCache[ws.name];
                             if (configMaxRows > 0 && dataTable.data.length >= configMaxRows) {
                                 console.warn(`[filter-ext] Worksheet filter "${wf.title}" hit the ${configMaxRows}-row cap reading "${wf.sheet}" — the value list may be INCOMPLETE. Raise "Max Rows per Source Read" or set it to 0.`);
                             }
@@ -2296,7 +2313,10 @@
                                         if (parentWfForLookup.sheet && parentWfForLookup.sheet !== wf.sheet) {
                                             const parentLookupWs = dashboard.worksheets.find(w => w.name === parentWfForLookup.sheet);
                                             if (parentLookupWs) {
-                                                lookupTable = await parentLookupWs.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
+                                                if (!_wsDataTableCache[parentLookupWs.name]) {
+                                                    _wsDataTableCache[parentLookupWs.name] = await parentLookupWs.getSummaryDataAsync({ ignoreSelection: true, maxRows: configMaxRows });
+                                                }
+                                                lookupTable = _wsDataTableCache[parentLookupWs.name];
                                             }
                                         }
                                         const parentExactFieldName = exactFieldNameMap[parentWfForLookup.col];
@@ -3121,6 +3141,13 @@
         let _syncParamMissing = false;  // warn once, then no-op
         let _syncParamState = { applyActive: '', stamp: null, paths: [] };
 
+        // Cached result of getParametersAsync() — reused within a Phase 1→Phase 2 window
+        // to avoid redundant round-trips. Invalidated on every ParameterChanged event so
+        // post-change reads always see the fresh value.
+        let _parameterListCache = null;
+        let _parameterListCacheTs = 0;
+        const _PARAM_CACHE_TTL = 15000; // 15 s covers the Phase 1 → fetch → Phase 2 chain
+
         async function writeSyncParam(patch) {
             try {
                 if (_syncParamMissing) return;
@@ -3139,6 +3166,30 @@
             } catch (e) {
                 console.warn('[filter-ext] sync param write failed:', e);
             }
+        }
+
+        // Wrapper around dashboard.getParametersAsync() that caches the result for
+        // _PARAM_CACHE_TTL ms. This eliminates duplicate server round-trips within a
+        // single applyAllFilters cycle (Phase 1 _applyFilterStateToTableau → Phase 1
+        // fetchDataAndRender → Phase 2 _applyFilterStateToTableau each called it
+        // independently). Cache is invalidated on every ParameterChanged event so
+        // post-user-change reads always get fresh objects.
+        async function _getParametersAsync() {
+            if (!tableau.extensions.dashboardContent) return [];
+            const _dash = tableau.extensions.dashboardContent.dashboard;
+            if (!_dash) return [];
+            const _now = Date.now();
+            if (_parameterListCache && (_now - _parameterListCacheTs) < _PARAM_CACHE_TTL) {
+                return _parameterListCache;
+            }
+            try {
+                _parameterListCache = await _dash.getParametersAsync();
+                _parameterListCacheTs = Date.now();
+            } catch (e) {
+                console.warn('[filter-ext] getParametersAsync failed:', e);
+                if (!_parameterListCache) _parameterListCache = [];
+            }
+            return _parameterListCache;
         }
 
         // Writes the current selection to this extension's settings. The keys
@@ -3328,13 +3379,7 @@
             // pay a getParametersAsync() round-trip per wsFilter (N → 1 call).
             let _cachedParams = null;
             if (configWsFilters.some(wf => wf.paramName)) {
-                try {
-                    _cachedParams = await tableau.extensions.dashboardContent.dashboard
-                        .getParametersAsync();
-                } catch (e) {
-                    console.warn('[filter-ext] getParametersAsync failed:', e);
-                    _cachedParams = [];
-                }
+                _cachedParams = await _getParametersAsync();
             }
 
             for (const wf of configWsFilters) {
