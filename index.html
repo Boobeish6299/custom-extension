@@ -3432,6 +3432,28 @@
                     }
                     walkTree(tree, []);
 
+                    // FIX: If any deeper level is filtered, all shallower levels must also be filtered
+                    // to prevent shallower leaf nodes from being excluded by deeper filters.
+                    let anyDeeperApplied = false;
+                    for (let i = cols.length - 1; i >= 0; i--) {
+                        if (filterPerLevel[i].apply) {
+                            anyDeeperApplied = true;
+                        } else if (anyDeeperApplied) {
+                            filterPerLevel[i].apply = true;
+                        }
+                    }
+
+                    // FIX: For any applied level from index 1 onwards, add null/blank values
+                    // so that leaf nodes at shallower levels are not excluded.
+                    for (let i = 1; i < cols.length; i++) {
+                        if (filterPerLevel[i].apply) {
+                            filterPerLevel[i].values.add(null);
+                            filterPerLevel[i].values.add("");
+                            filterPerLevel[i].values.add("Null");
+                            filterPerLevel[i].values.add("%null%");
+                        }
+                    }
+
                     // If the previous apply used the blocking sentinel,
                     // clearFilterAsync may not undo it cleanly. Force an
                     // explicit applyFilterAsync with the full master values
