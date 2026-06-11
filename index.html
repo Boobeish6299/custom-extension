@@ -2428,17 +2428,45 @@
                         const parentIsAll    = parentSelected.length === 0 ||
                             (parentAll.length > 0 && parentSelected.length === parentAll.length);
 
-                        if (parentWf && !parentIsAll && parentSelected.length > 0 && dependencyLookup[wf.id]) {
-                            const relevant = new Set();
-                            parentSelected.forEach(pv => {
-                                const children = dependencyLookup[wf.id][pv];
-                                if (children) children.forEach(m => relevant.add(m));
-                            });
-                            wsFiltersData[wf.id] = Array.from(relevant).sort((a, b) => a.localeCompare(b));
+                        if (parentWf && dependencyLookup[wf.id]) {
+                            if (!parentIsAll && parentSelected.length > 0) {
+                                const relevant = new Set();
+                                parentSelected.forEach(pv => {
+                                    const children = dependencyLookup[wf.id][pv];
+                                    if (children) children.forEach(m => relevant.add(m));
+                                });
+                                wsFiltersData[wf.id] = Array.from(relevant).sort((a, b) => a.localeCompare(b));
+                            } else {
+                                wsFiltersData[wf.id] = masterWsFiltersData[wf.id] || [];
+                            }
+
                             const validSet = new Set(wsFiltersData[wf.id]);
-                            if (selectedWsPathsMap[wf.id]) {
-                                selectedWsPathsMap[wf.id] = selectedWsPathsMap[wf.id]
-                                    .filter(v => v === '___NONE___' || validSet.has(v));
+                            const current = selectedWsPathsMap[wf.id];
+                            
+                            if (autoSelect || !current || current.length === 0) {
+                                if (parentIsAll) {
+                                    selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
+                                } else {
+                                    // Automatically select based on parent selection
+                                    const isGCA = (pv) => pv && pv.toLowerCase().includes('google code assist');
+                                    const isWindsurf = (pv) => pv && pv.toLowerCase().includes('windsurf');
+                                    const hasGCA = parentSelected.some(isGCA);
+                                    const hasWindsurf = parentSelected.some(isWindsurf);
+
+                                    if (hasGCA && !hasWindsurf) {
+                                        selectedWsPathsMap[wf.id] = wsFiltersData[wf.id].filter(v => 
+                                            v.toLowerCase().startsWith('gemini') || v.toLowerCase().includes('gemini')
+                                        );
+                                    } else if (hasWindsurf && !hasGCA) {
+                                        selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
+                                    } else {
+                                        selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
+                                    }
+                                }
+                            } else {
+                                selectedWsPathsMap[wf.id] = current.filter(
+                                    v => v === '___NONE___' || validSet.has(v)
+                                );
                             }
                         }
                     }
