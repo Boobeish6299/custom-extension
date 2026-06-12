@@ -573,11 +573,16 @@
             font-size: 12px;
             line-height: 1.2;
         }
-        .date-cal-day:hover:not(.empty) { background: #dbeafe; }
-        .date-cal-day.selected { background: var(--accentColor, #22d3ee); color: #000; font-weight: bold; }
-        .date-cal-day.today { border: 1px solid var(--accentColor, #22d3ee); }
-        .date-cal-day.other-month { color: #c0c0c0; }
-        .date-cal-day.empty { cursor: default; }
+         .date-cal-day:hover:not(.empty):not(.disabled) { background: #dbeafe; }
+         .date-cal-day.selected { background: var(--accentColor, #22d3ee); color: #000; font-weight: bold; }
+         .date-cal-day.today { border: 1px solid var(--accentColor, #22d3ee); }
+         .date-cal-day.other-month { color: #c0c0c0; }
+         .date-cal-day.empty { cursor: default; }
+         .date-cal-day.disabled {
+             opacity: 0.25;
+             cursor: not-allowed;
+             pointer-events: none;
+         }
 
         /* ── Sticky Apply header ── */
         .apply-bar {
@@ -1546,12 +1551,9 @@
             } catch(e) { return ''; }
         }
 
-        // Mirrors the workbook formula:
-        //   prev_start = DATEADD('day', -(DATEDIFF('day', Start, End) + 1), Start)
-        //   prev_end   = Start - 1 day
-        // Reads pendingParams first so the row updates the instant a user
-        // picks a date, before Apply pushes it to Tableau.
-        function computePrevPeriodRange() {
+        // Returns the start and end date parameters and their current (possibly pending) values.
+        // Assumes dateParams[0] is the start date and dateParams[1] is the end date.
+        function getStartAndEndDates() {
             const dateParams = configParams
                 .map(pc => ({ pc, p: paramObjects[pc.id] }))
                 .filter(x => x.p && isDateParam(x.p));
@@ -1564,8 +1566,25 @@
                 return raw ? new Date(raw) : null;
             };
 
-            const startD = readVal(dateParams[0]);
-            const endD   = readVal(dateParams[1]);
+            return {
+                startId: dateParams[0].pc.id,
+                endId: dateParams[1].pc.id,
+                startVal: readVal(dateParams[0]),
+                endVal: readVal(dateParams[1])
+            };
+        }
+
+        // Mirrors the workbook formula:
+        //   prev_start = DATEADD('day', -(DATEDIFF('day', Start, End) + 1), Start)
+        //   prev_end   = Start - 1 day
+        // Reads pendingParams first so the row updates the instant a user
+        // picks a date, before Apply pushes it to Tableau.
+        function computePrevPeriodRange() {
+            const dates = getStartAndEndDates();
+            if (!dates) return null;
+
+            const startD = dates.startVal;
+            const endD   = dates.endVal;
             if (!startD || !endD || isNaN(startD.getTime()) || isNaN(endD.getTime())) return null;
 
             const MS = 86400000;
@@ -1685,6 +1704,14 @@
                     const daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
                     const daysInPrev = new Date(calViewYear, calViewMonth, 0).getDate();
 
+                    const dates = getStartAndEndDates();
+                    const getUtcMidnight = (d) => {
+                        if (!d || isNaN(d.getTime())) return null;
+                        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+                    };
+                    const startUtc = dates ? getUtcMidnight(dates.startVal) : null;
+                    const endUtc = dates ? getUtcMidnight(dates.endVal) : null;
+
                     let html = `<div class="date-cal-header">
                         <button class="date-cal-nav" id="datecal-prev-${pId}">&#8249;</button>
                         <span class="date-cal-title">${monthNames[calViewMonth]} ${calViewYear}</span>
@@ -1704,16 +1731,36 @@
                         const d = daysInPrev - firstDay + 1 + i;
                         const prevM = calViewMonth === 0 ? 11 : calViewMonth - 1;
                         const prevY = calViewMonth === 0 ? calViewYear - 1 : calViewYear;
-                        html += `<div class="date-cal-day other-month" data-y="${prevY}" data-m="${prevM}" data-d="${d}">${d}</div>`;
+                        
+                        const cellTime = Date.UTC(prevY, prevM, d);
+                        let cls = 'date-cal-day other-month';
+                        if (dates) {
+                            if (pId === dates.endId && startUtc !== null && cellTime < startUtc) {
+                                cls += ' disabled';
+                            } else if (pId === dates.startId && endUtc !== null && cellTime > endUtc) {
+                                cls += ' disabled';
+                            }
+                        }
+                        html += `<div class="${cls}" data-y="${prevY}" data-m="${prevM}" data-d="${d}">${d}</div>`;
                     }
 
                     // Current month days
                     for (let d = 1; d <= daysInMonth; d++) {
                         const isSel = sel && sel.y === calViewYear && sel.m === calViewMonth && sel.d === d;
                         const isToday = todayY === calViewYear && todayM === calViewMonth && todayD === d;
+                        
+                        const cellTime = Date.UTC(calViewYear, calViewMonth, d);
                         let cls = 'date-cal-day';
                         if (isSel) cls += ' selected';
                         if (isToday && !isSel) cls += ' today';
+                        
+                        if (dates) {
+                            if (pId === dates.endId && startUtc !== null && cellTime < startUtc) {
+                                cls += ' disabled';
+                            } else if (pId === dates.startId && endUtc !== null && cellTime > endUtc) {
+                                cls += ' disabled';
+                            }
+                        }
                         html += `<div class="${cls}" data-y="${calViewYear}" data-m="${calViewMonth}" data-d="${d}">${d}</div>`;
                     }
 
@@ -1723,7 +1770,16 @@
                     const nextM = calViewMonth === 11 ? 0 : calViewMonth + 1;
                     const nextY = calViewMonth === 11 ? calViewYear + 1 : calViewYear;
                     for (let d = 1; d <= trailing; d++) {
-                        html += `<div class="date-cal-day other-month" data-y="${nextY}" data-m="${nextM}" data-d="${d}">${d}</div>`;
+                        const cellTime = Date.UTC(nextY, nextM, d);
+                        let cls = 'date-cal-day other-month';
+                        if (dates) {
+                            if (pId === dates.endId && startUtc !== null && cellTime < startUtc) {
+                                cls += ' disabled';
+                            } else if (pId === dates.startId && endUtc !== null && cellTime > endUtc) {
+                                cls += ' disabled';
+                            }
+                        }
+                        html += `<div class="${cls}" data-y="${nextY}" data-m="${nextM}" data-d="${d}">${d}</div>`;
                     }
 
                     html += '</div>';
@@ -1745,6 +1801,7 @@
                     cal.querySelectorAll('.date-cal-day:not(.empty)').forEach(cell => {
                         cell.onclick = (e) => {
                             e.stopPropagation();
+                            if (cell.classList.contains('disabled')) return;
                             const y = +cell.dataset.y, m = +cell.dataset.m, d = +cell.dataset.d;
                             const newValue = new Date(Date.UTC(y, m, d));
                             cal.classList.remove('open');
