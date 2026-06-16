@@ -663,6 +663,45 @@
             margin-top: 0;
             border-top: none;
         }
+
+        /* ================================================================
+           CHATBOT launch button and widget styles
+           ================================================================ */
+        :root {
+            /* These will be overridden dynamically via JS */
+            --chatbot-fab-bg: #075e54;
+            --chatbot-header-bg: #075e54;
+            --chatbot-header-font: #ffffff;
+            --chatbot-user-bubble-bg: #d9fdd3;
+            --chatbot-user-bubble-font: #111b21;
+            --chatbot-bot-bubble-bg: #ffffff;
+            --chatbot-bot-bubble-font: #111b21;
+        }
+
+        #chatbot-launch-btn {
+            display: none;
+            width: 100%;
+            padding: 8px 12px;
+            margin-top: 8px;
+            background: var(--chatbot-fab-bg, #075e54);
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        #chatbot-launch-btn:hover {
+            opacity: 0.9;
+        }
+        #chatbot-launch-btn:active {
+            transform: scale(0.98);
+        }
     </style>
 </head>
 
@@ -756,12 +795,109 @@
             <label>Accent Color (Checkboxes & Pills):</label>
             <input type="color" id="accentColor-input" value="#22d3ee" />
         </div>
+
+        <div class="config-section">
+            <h4 style="margin: 10px 0 5px 0;">🤖 Chatbot Configuration</h4>
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+                <input type="checkbox" id="cfg-chatbot-enabled" style="margin:0; width:auto;"/>
+                <label for="cfg-chatbot-enabled" style="margin:0; display:inline; font-weight:normal;">Enable Chatbot</label>
+            </div>
+
+            <div id="chatbot-config-fields" style="display:none;">
+                <label>Launcher Button Label:</label>
+                <input type="text" id="cfg-chatbot-launch-label" value="Chat with AI" />
+
+                <label>Chatbot Header Title:</label>
+                <input type="text" id="cfg-chatbot-bot-name" value="AI Assistant" />
+
+                <label>Avatar / Image URL (optional):</label>
+                <input type="text" id="cfg-chatbot-avatar-url" placeholder="e.g., https://example.com/avatar.png" />
+
+                <label>Launch Button / Icon Color:</label>
+                <input type="color" id="cfg-chatbot-fab-bg" value="#075e54" />
+
+                <label>Chat Header Background Color:</label>
+                <input type="color" id="cfg-chatbot-header-bg" value="#075e54" />
+
+                <label>Chat Header Font Color:</label>
+                <input type="color" id="cfg-chatbot-header-font" value="#ffffff" />
+
+                <label>Chat Body Background (Color or URL):</label>
+                <input type="text" id="cfg-chatbot-body-bg" value="#efeae2" placeholder="e.g., #efeae2 or url(...)" />
+
+                <label>User Bubble Background Color:</label>
+                <input type="color" id="cfg-chatbot-user-bubble-bg" value="#d9fdd3" />
+
+                <label>User Bubble Font Color:</label>
+                <input type="color" id="cfg-chatbot-user-bubble-font" value="#111b21" />
+
+                <label>Bot Bubble Background Color:</label>
+                <input type="color" id="cfg-chatbot-bot-bubble-bg" value="#ffffff" />
+
+                <label>Bot Bubble Font Color:</label>
+                <input type="color" id="cfg-chatbot-bot-bubble-font" value="#111b21" />
+
+                <label>Chat Window Width (px):</label>
+                <input type="number" id="cfg-chatbot-width" value="380" min="280" max="600" />
+
+                <label>Chat Window Height (px):</label>
+                <input type="number" id="cfg-chatbot-height" value="500" min="300" max="800" />
+
+                <label>REST API URL:</label>
+                <input type="text" id="cfg-chatbot-api-url" placeholder="https://api.example.com/chat" />
+
+                <label>HTTP Method:</label>
+                <select id="cfg-chatbot-api-method">
+                    <option value="POST">POST</option>
+                    <option value="GET">GET</option>
+                    <option value="PUT">PUT</option>
+                </select>
+
+                <label>Headers (JSON):</label>
+                <input type="text" id="cfg-chatbot-headers" placeholder='{"Authorization": "Bearer ..."}' />
+
+                <label>Request Schema Template (JSON):</label>
+                <textarea id="cfg-chatbot-request-schema" style="width:100%; height:80px; font-family:monospace; font-size:11px; margin-top:5px; box-sizing:border-box; border:1px solid #ccc; border-radius:4px; padding:6px;">{
+  "message": "{{MESSAGE}}",
+  "username": "{{USERNAME}}",
+  "email": "{{EMAIL}}"
+}</textarea>
+
+                <label>Response Field Path:</label>
+                <input type="text" id="cfg-chatbot-response-field" value="reply" placeholder="e.g. reply or data.message" />
+
+                <label>User Info Worksheet:</label>
+                <select id="cfg-chatbot-user-ws">
+                    <option value="">— Select Worksheet —</option>
+                </select>
+
+                <label>Username Column:</label>
+                <select id="cfg-chatbot-username-col">
+                    <option value="">— Select Column —</option>
+                </select>
+
+                <label>Email Column:</label>
+                <select id="cfg-chatbot-email-col">
+                    <option value="">— Select Column —</option>
+                </select>
+            </div>
+        </div>
         <button id="save-btn" style="width: 100%;">Save and Close</button>
     </div>
 
-    <div id="main-ui" style="display:none;">
+    <div id="main-ui" style="display:none; height:100%; box-sizing:border-box;">
         <div id="loading" style="display:none !important;" aria-hidden="true"></div>
-        <div id="filters-container"></div>
+        
+        <!-- 1. Filters Container wrapper (shown by default) -->
+        <div id="filters-container-wrapper" style="display:flex; flex-direction:column; width:100%; box-sizing:border-box;">
+            <div id="filters-container"></div>
+            
+            <!-- Chatbot Launcher (rendered directly below filters) -->
+            <button id="chatbot-launch-btn" onclick="openChatDialog()">
+                <span id="chatbot-launch-icon">💬</span>
+                <span id="chatbot-launch-label">Chat with AI</span>
+            </button>
+        </div>
     </div>
 
     <script>
@@ -1113,6 +1249,7 @@
                     document.getElementById('config-ui').style.display = 'none';
                     document.getElementById('main-ui').style.display = 'flex';
                     buildMainUI();
+                    initChatbot();
 
                     // Await params before deciding how many fetches to make.
                     // Previously fire-and-forget, which forced a wasted initial
@@ -1225,6 +1362,60 @@
             renderConfigFilters();
             renderConfigParams();
             renderConfigWsFilters();
+
+            // Helper to populate input fields inside settings
+            function setConfigValue(elId, settingKey, fallback) {
+                const el = document.getElementById(elId);
+                if (el) el.value = getSetting(settingKey, fallback);
+            }
+
+            // ── Chatbot Configuration Seeding ──
+            document.getElementById('cfg-chatbot-enabled').checked = getSetting('chatbotEnabled', 'false') === 'true';
+            document.getElementById('chatbot-config-fields').style.display = document.getElementById('cfg-chatbot-enabled').checked ? 'block' : 'none';
+            
+            // Add handler for toggle change
+            const chatbotEnabledToggle = document.getElementById('cfg-chatbot-enabled');
+            if (chatbotEnabledToggle) {
+                const fieldsDiv = document.getElementById('chatbot-config-fields');
+                chatbotEnabledToggle.onchange = (e) => {
+                    fieldsDiv.style.display = e.target.checked ? 'block' : 'none';
+                };
+            }
+
+            setConfigValue('cfg-chatbot-launch-label', 'chatbotLaunchLabel', 'Chat with AI');
+            setConfigValue('cfg-chatbot-bot-name', 'chatbotBotName', 'AI Assistant');
+            setConfigValue('cfg-chatbot-avatar-url', 'chatbotAvatarUrl', '');
+            setConfigValue('cfg-chatbot-fab-bg', 'chatbotFabBg', '#075e54');
+            setConfigValue('cfg-chatbot-header-bg', 'chatbotHeaderBg', '#075e54');
+            setConfigValue('cfg-chatbot-header-font', 'chatbotHeaderFont', '#ffffff');
+            setConfigValue('cfg-chatbot-body-bg', 'chatbotBodyBg', '#efeae2');
+            setConfigValue('cfg-chatbot-user-bubble-bg', 'chatbotUserBubbleBg', '#d9fdd3');
+            setConfigValue('cfg-chatbot-user-bubble-font', 'chatbotUserBubbleFont', '#111b21');
+            setConfigValue('cfg-chatbot-bot-bubble-bg', 'chatbotBotBubbleBg', '#ffffff');
+            setConfigValue('cfg-chatbot-bot-bubble-font', 'chatbotBotBubbleFont', '#111b21');
+            setConfigValue('cfg-chatbot-width', 'chatbotWidth', '380');
+            setConfigValue('cfg-chatbot-height', 'chatbotHeight', '500');
+            setConfigValue('cfg-chatbot-api-url', 'chatbotApiUrl', '');
+            setConfigValue('cfg-chatbot-api-method', 'chatbotApiMethod', 'POST');
+            setConfigValue('cfg-chatbot-headers', 'chatbotHeaders', '');
+            const savedSchema = getSetting('chatbotRequestSchema', '{\n  "message": "{{MESSAGE}}",\n  "username": "{{USERNAME}}",\n  "email": "{{EMAIL}}"\n}');
+            const schemaEl = document.getElementById('cfg-chatbot-request-schema');
+            if (schemaEl) schemaEl.value = savedSchema;
+            setConfigValue('cfg-chatbot-response-field', 'chatbotResponseField', 'reply');
+
+            // Populate worksheets dropdown for chatbot
+            const chatWsSelect = document.getElementById('cfg-chatbot-user-ws');
+            if (chatWsSelect) {
+                let wsOptions = '<option value="">— Select Worksheet —</option>';
+                dashboard.worksheets.forEach(w => {
+                    wsOptions += `<option value="${w.name}">${w.name}</option>`;
+                });
+                chatWsSelect.innerHTML = wsOptions;
+                chatWsSelect.value = getSetting('chatbotUserWorksheet', '');
+                chatWsSelect.onchange = () => loadChatbotColumns();
+            }
+            loadChatbotColumns();
+
             document.getElementById('save-btn').onclick = saveConfig;
         }
 
@@ -1478,6 +1669,30 @@
             tableau.extensions.settings.set('titleBgColor', document.getElementById('titleBgColor-input').value);
             tableau.extensions.settings.set('bgColor', document.getElementById('bgColor-input').value);
             tableau.extensions.settings.set('accentColor', document.getElementById('accentColor-input').value);
+
+            // Save Chatbot Settings
+            tableau.extensions.settings.set('chatbotEnabled', document.getElementById('cfg-chatbot-enabled')?.checked ? 'true' : 'false');
+            tableau.extensions.settings.set('chatbotLaunchLabel', document.getElementById('cfg-chatbot-launch-label')?.value || 'Chat with AI');
+            tableau.extensions.settings.set('chatbotBotName', document.getElementById('cfg-chatbot-bot-name')?.value || 'AI Assistant');
+            tableau.extensions.settings.set('chatbotAvatarUrl', document.getElementById('cfg-chatbot-avatar-url')?.value || '');
+            tableau.extensions.settings.set('chatbotFabBg', document.getElementById('cfg-chatbot-fab-bg')?.value || '#075e54');
+            tableau.extensions.settings.set('chatbotHeaderBg', document.getElementById('cfg-chatbot-header-bg')?.value || '#075e54');
+            tableau.extensions.settings.set('chatbotHeaderFont', document.getElementById('cfg-chatbot-header-font')?.value || '#ffffff');
+            tableau.extensions.settings.set('chatbotBodyBg', document.getElementById('cfg-chatbot-body-bg')?.value || '#efeae2');
+            tableau.extensions.settings.set('chatbotUserBubbleBg', document.getElementById('cfg-chatbot-user-bubble-bg')?.value || '#d9fdd3');
+            tableau.extensions.settings.set('chatbotUserBubbleFont', document.getElementById('cfg-chatbot-user-bubble-font')?.value || '#111b21');
+            tableau.extensions.settings.set('chatbotBotBubbleBg', document.getElementById('cfg-chatbot-bot-bubble-bg')?.value || '#ffffff');
+            tableau.extensions.settings.set('chatbotBotBubbleFont', document.getElementById('cfg-chatbot-bot-bubble-font')?.value || '#111b21');
+            tableau.extensions.settings.set('chatbotWidth', document.getElementById('cfg-chatbot-width')?.value || '380');
+            tableau.extensions.settings.set('chatbotHeight', document.getElementById('cfg-chatbot-height')?.value || '500');
+            tableau.extensions.settings.set('chatbotApiUrl', document.getElementById('cfg-chatbot-api-url')?.value || '');
+            tableau.extensions.settings.set('chatbotApiMethod', document.getElementById('cfg-chatbot-api-method')?.value || 'POST');
+            tableau.extensions.settings.set('chatbotHeaders', document.getElementById('cfg-chatbot-headers')?.value || '{}');
+            tableau.extensions.settings.set('chatbotRequestSchema', document.getElementById('cfg-chatbot-request-schema')?.value || '{"message":"{{MESSAGE}}","username":"{{USERNAME}}","email":"{{EMAIL}}"}');
+            tableau.extensions.settings.set('chatbotResponseField', document.getElementById('cfg-chatbot-response-field')?.value || 'reply');
+            tableau.extensions.settings.set('chatbotUserWorksheet', document.getElementById('cfg-chatbot-user-ws')?.value || '');
+            tableau.extensions.settings.set('chatbotUsernameCol', document.getElementById('cfg-chatbot-username-col')?.value || '');
+            tableau.extensions.settings.set('chatbotEmailCol', document.getElementById('cfg-chatbot-email-col')?.value || '');
 
             tableau.extensions.settings.saveAsync().then(() => {
                 location.reload();
@@ -4502,6 +4717,130 @@
             const popupTextColor = getContrastYIQ(bgColor);
             document.documentElement.style.setProperty('--popupTextColor', popupTextColor);
         }
+        /* ================================================================
+           CHATBOT RUNTIME ENGINE
+           ================================================================ */
+        function getSetting(key, fallback) {
+            return tableau.extensions.settings.get(key) || fallback;
+        }
+
+        async function loadChatbotColumns() {
+            const chatWsSelect = document.getElementById('cfg-chatbot-user-ws');
+            const usernameSelect = document.getElementById('cfg-chatbot-username-col');
+            const emailSelect = document.getElementById('cfg-chatbot-email-col');
+            if (!chatWsSelect || !usernameSelect || !emailSelect) return;
+
+            const wsName = chatWsSelect.value;
+            usernameSelect.innerHTML = '<option value="">— Select Column —</option>';
+            emailSelect.innerHTML = '<option value="">— Select Column —</option>';
+            if (!wsName) return;
+
+            try {
+                const dashboard = tableau.extensions.dashboardContent.dashboard;
+                const ws = dashboard.worksheets.find(w => w.name === wsName);
+                if (!ws) return;
+
+                const dt = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 1 });
+                const savedUsername = getSetting('chatbotUsernameCol', '');
+                const savedEmail = getSetting('chatbotEmailCol', '');
+
+                dt.columns.forEach(col => {
+                    const name = col.fieldName;
+                    const esc = escHtml(name);
+                    usernameSelect.innerHTML += `<option value="${esc}"${name === savedUsername ? ' selected' : ''}>${esc}</option>`;
+                    emailSelect.innerHTML += `<option value="${esc}"${name === savedEmail ? ' selected' : ''}>${esc}</option>`;
+                });
+            } catch (e) {
+                console.warn('[filter-ext] Chatbot: could not load columns from worksheet:', e);
+            }
+        }
+
+        function initChatbot() {
+            const enabled = getSetting('chatbotEnabled', 'false') === 'true';
+            const launchBtn = document.getElementById('chatbot-launch-btn');
+            if (!launchBtn) return;
+
+            if (!enabled) {
+                launchBtn.style.display = 'none';
+                return;
+            }
+
+            // Configure launch button styles and label
+            launchBtn.style.display = 'flex';
+            launchBtn.style.backgroundColor = getSetting('chatbotFabBg', '#075e54');
+            document.getElementById('chatbot-launch-label').textContent = getSetting('chatbotLaunchLabel', 'Chat with AI');
+        }
+
+        async function openChatDialog() {
+            const btn = document.getElementById('chatbot-launch-btn');
+            if (btn) btn.style.pointerEvents = 'none'; // Prevent double-click
+
+            try {
+                // 1. Read user info from configured worksheet
+                const wsName = getSetting('chatbotUserWorksheet', '');
+                let username = '', email = '';
+                if (wsName) {
+                    const dashboard = tableau.extensions.dashboardContent.dashboard;
+                    const ws = dashboard.worksheets.find(w => w.name === wsName);
+                    if (ws) {
+                        try {
+                            const dt = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 1 });
+                            const usernameCol = getSetting('chatbotUsernameCol', '');
+                            const emailCol = getSetting('chatbotEmailCol', '');
+                            for (let c = 0; c < dt.columns.length; c++) {
+                                const fn = dt.columns[c].fieldName;
+                                if (fn === usernameCol && dt.data.length > 0)
+                                    username = dt.data[0][c].formattedValue || '';
+                                if (fn === emailCol && dt.data.length > 0)
+                                    email = dt.data[0][c].formattedValue || '';
+                            }
+                        } catch (e) {
+                            console.warn('[filter-ext] Chatbot: could not read user info:', e);
+                        }
+                    }
+                }
+
+                // 2. Build payload with all config
+                const payload = JSON.stringify({
+                    apiUrl: getSetting('chatbotApiUrl', ''),
+                    apiMethod: getSetting('chatbotApiMethod', 'POST'),
+                    headers: getSetting('chatbotHeaders', '{}'),
+                    requestSchema: getSetting('chatbotRequestSchema', '{"message":"{{MESSAGE}}","username":"{{USERNAME}}","email":"{{EMAIL}}"}'),
+                    responseField: getSetting('chatbotResponseField', 'reply'),
+                    botName: getSetting('chatbotBotName', 'AI Assistant'),
+                    avatarUrl: getSetting('chatbotAvatarUrl', ''),
+                    bodyBg: getSetting('chatbotBodyBg', '#efeae2'),
+                    fabBg: getSetting('chatbotFabBg', '#075e54'),
+                    headerBg: getSetting('chatbotHeaderBg', '#075e54'),
+                    headerFont: getSetting('chatbotHeaderFont', '#ffffff'),
+                    userBubbleBg: getSetting('chatbotUserBubbleBg', '#d9fdd3'),
+                    userBubbleFont: getSetting('chatbotUserBubbleFont', '#111b21'),
+                    botBubbleBg: getSetting('chatbotBotBubbleBg', '#ffffff'),
+                    botBubbleFont: getSetting('chatbotBotBubbleFont', '#111b21'),
+                    username: username,
+                    email: email
+                });
+
+                // 3. Open Dialog
+                const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+                const dialogUrl = window.location.origin + basePath + 'chat_window.html';
+
+                const chatWidth = parseInt(getSetting('chatbotWidth', '380'), 10);
+                const chatHeight = parseInt(getSetting('chatbotHeight', '500'), 10);
+
+                await tableau.extensions.ui.displayDialogAsync(dialogUrl, payload, {
+                    width: chatWidth,
+                    height: chatHeight
+                });
+            } catch (e) {
+                if (e.errorCode !== tableau.ErrorCodes.DialogClosedByUser) {
+                    console.error('[filter-ext] Chatbot dialog error:', e);
+                }
+            } finally {
+                if (btn) btn.style.pointerEvents = '';
+            }
+        }
+
         initializeExtension();
     </script>
 </body>

@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant Chat</title>
+    <!-- Include Tableau Extensions library -->
+    <script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api@1.16.0/lib/tableau.extensions.1.latest.js"></script>
+
+    <style>
+        /* ================================================================
+           1. Core Variables & Root Styles
+           ================================================================ */
+        :root {
+            /* Fallback defaults — overridden dynamically on init */
+            --chat-header-bg: #075e54;
+            --chat-header-font: #ffffff;
+            --chat-user-bubble-bg: #d9fdd3;
+            --chat-user-bubble-font: #111b21;
+            --chat-bot-bubble-bg: #ffffff;
+            --chat-bot-bubble-font: #111b21;
+            --chat-body-bg: #efeae2;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: var(--chat-body-bg);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ================================================================
+           2. Chat Header
+           ================================================================ */
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--chat-header-bg);
+            color: var(--chat-header-font);
+            padding: 10px 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+            z-index: 10;
+            flex-shrink: 0;
+        }
+
+        .chat-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .chat-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            object-fit: cover;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .chat-avatar-fallback {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .chat-title-container {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-title {
+            font-weight: 600;
+            font-size: 14.5px;
+            line-height: 1.2;
+        }
+
+        .chat-status {
+            font-size: 10.5px;
+            opacity: 0.85;
+            margin-top: 1px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .chat-status::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background-color: #2ec866;
+            border-radius: 50%;
+        }
+
+        .chat-close-btn {
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 26px;
+            cursor: pointer;
+            padding: 0 4px;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chat-close-btn:hover {
+            opacity: 1;
+        }
+
+        /* ================================================================
+           3. Chat Body & Scrollable Area
+           ================================================================ */
+        .chat-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-sizing: border-box;
+            background-size: cover;
+            background-position: center;
+        }
+
+        /* Scrollbar styling */
+        .chat-body::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-body::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .chat-body::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 4px;
+        }
+
+        /* Date Separator */
+        .chat-date-separator {
+            align-self: center;
+            margin: 6px 0;
+            font-size: 10.5px;
+            color: #667781;
+            background: #ffffff;
+            padding: 5px 12px;
+            border-radius: 6px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+            font-weight: 500;
+        }
+
+        /* Welcome Card */
+        .chat-welcome-card {
+            align-self: center;
+            width: 92%;
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 14px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+            text-align: center;
+            margin-bottom: 8px;
+            box-sizing: border-box;
+            border-top: 3px solid var(--chat-header-bg);
+        }
+
+        .chat-welcome-icon {
+            font-size: 26px;
+            margin-bottom: 6px;
+        }
+
+        .chat-welcome-title {
+            font-weight: bold;
+            font-size: 14px;
+            color: #111b21;
+            margin-bottom: 4px;
+        }
+
+        .chat-welcome-subtitle {
+            font-size: 11.5px;
+            color: #667781;
+            line-height: 1.45;
+        }
+
+        /* Error Banner */
+        .chat-error-banner {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 8px 12px;
+            font-size: 12px;
+            text-align: center;
+            border-bottom: 1px solid rgba(198, 40, 40, 0.2);
+            display: none;
+            flex-shrink: 0;
+        }
+
+        /* ================================================================
+           4. Chat Message Bubbles
+           ================================================================ */
+        .chat-msg {
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
+            padding: 6px 10px 8px 10px;
+            border-radius: 8px;
+            font-size: 13.5px;
+            line-height: 1.45;
+            position: relative;
+            box-shadow: 0 1px 1.5px rgba(0,0,0,0.12);
+            word-wrap: break-word;
+            box-sizing: border-box;
+        }
+
+        .chat-msg.user {
+            align-self: flex-end;
+            background: var(--chat-user-bubble-bg);
+            color: var(--chat-user-bubble-font);
+            border-top-right-radius: 0;
+        }
+
+        .chat-msg.bot {
+            align-self: flex-start;
+            background: var(--chat-bot-bubble-bg);
+            color: var(--chat-bot-bubble-font);
+            border-top-left-radius: 0;
+        }
+
+        .chat-msg.error {
+            background: #ffebee !important;
+            color: #c62828 !important;
+            border-left: 4px solid #e53935;
+        }
+
+        .chat-msg-sender {
+            font-weight: bold;
+            font-size: 11px;
+            color: var(--chat-header-bg);
+            margin-bottom: 2px;
+        }
+
+        .chat-msg-text {
+            white-space: pre-wrap;
+        }
+
+        .chat-msg-time {
+            font-size: 9.5px;
+            color: #8696a0;
+            align-self: flex-end;
+            margin-top: 4px;
+            margin-bottom: -4px;
+        }
+
+        /* ================================================================
+           5. Typing Indicator
+           ================================================================ */
+        .chat-typing {
+            align-self: flex-start;
+            background: var(--chat-bot-bubble-bg);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border-top-left-radius: 0;
+            box-shadow: 0 1px 1.5px rgba(0,0,0,0.12);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 2px;
+        }
+
+        .chat-typing-dot {
+            width: 6px;
+            height: 6px;
+            background: #8696a0;
+            border-radius: 50%;
+            animation: chatBounce 1.4s infinite ease-in-out both;
+        }
+
+        .chat-typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .chat-typing-dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes chatBounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+
+        /* ================================================================
+           6. Input Bar
+           ================================================================ */
+        .chat-input-area {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: #f0f2f5;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            box-sizing: border-box;
+            flex-shrink: 0;
+        }
+
+        .chat-input-field {
+            flex: 1;
+            border: none;
+            border-radius: 20px;
+            padding: 9px 15px;
+            font-size: 13.5px;
+            outline: none;
+            background: #ffffff;
+            box-sizing: border-box;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.05);
+        }
+
+        .chat-input-field::placeholder {
+            color: #8696a0;
+        }
+
+        .chat-send-btn {
+            background: var(--chat-header-bg);
+            color: #ffffff;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+            transition: background-color 0.2s, opacity 0.2s;
+            flex-shrink: 0;
+            padding: 0;
+        }
+
+        .chat-send-btn:hover {
+            opacity: 0.95;
+        }
+
+        .chat-send-btn:disabled {
+            background: #aebac1;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .chat-send-btn svg {
+            width: 17px;
+            height: 17px;
+            fill: #ffffff;
+            margin-left: 2px; /* optical adjustment */
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Error Banner -->
+    <div id="chat-error-banner" class="chat-error-banner"></div>
+
+    <!-- Chat Header -->
+    <div class="chat-header">
+        <div class="chat-header-left">
+            <img id="chat-avatar" class="chat-avatar" style="display:none;" />
+            <div id="chat-avatar-fallback" class="chat-avatar-fallback">🤖</div>
+            <div class="chat-title-container">
+                <div id="chat-title" class="chat-title">AI Assistant</div>
+                <div id="chat-status" class="chat-status">Online</div>
+            </div>
+        </div>
+        <button class="chat-close-btn" onclick="closeChat()">&times;</button>
+    </div>
+
+    <!-- Scrollable Chat Area -->
+    <div id="chat-body" class="chat-body"></div>
+
+    <!-- Input Control Panel -->
+    <div class="chat-input-area">
+        <input type="text" id="chat-input-field" class="chat-input-field" placeholder="Type a message..." onkeydown="handleInputKeydown(event)" />
+        <button id="chat-send-btn" class="chat-send-btn" onclick="sendChatMessage()">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+        </button>
+    </div>
+
+    <script>
+        /* ================================================================
+           7. Javascript Engine
+           ================================================================ */
+        let chatConfig = {};
+        let chatMessages = [];
+        let isWaitingForReply = false;
+
+        // Initialize Dialogue
+        tableau.extensions.ui.initializeDialogAsync().then(payload => {
+            if (payload) {
+                try {
+                    chatConfig = JSON.parse(payload);
+                    applySettingsTheme();
+                } catch (e) {
+                    console.error('[ChatWindow] Could not parse config payload:', e);
+                }
+            }
+
+            if (!chatConfig.apiUrl) {
+                const banner = document.getElementById('chat-error-banner');
+                banner.textContent = '⚠ No API URL configured. Messages cannot be sent.';
+                banner.style.display = 'block';
+            }
+
+            renderWelcomeMessage();
+            document.getElementById('chat-input-field').focus();
+        }).catch(err => {
+            console.error('[ChatWindow] initializeDialogAsync failed:', err);
+            renderWelcomeMessage();
+        });
+
+        function applySettingsTheme() {
+            const root = document.documentElement;
+
+            // Apply custom CSS styling variables
+            if (chatConfig.fabBg) root.style.setProperty('--chat-header-bg', chatConfig.fabBg);
+            if (chatConfig.headerBg) root.style.setProperty('--chat-header-bg', chatConfig.headerBg);
+            if (chatConfig.headerFont) root.style.setProperty('--chat-header-font', chatConfig.headerFont);
+            if (chatConfig.userBubbleBg) root.style.setProperty('--chat-user-bubble-bg', chatConfig.userBubbleBg);
+            if (chatConfig.userBubbleFont) root.style.setProperty('--chat-user-bubble-font', chatConfig.userBubbleFont);
+            if (chatConfig.botBubbleBg) root.style.setProperty('--chat-bot-bubble-bg', chatConfig.botBubbleBg);
+            if (chatConfig.botBubbleFont) root.style.setProperty('--chat-bot-bubble-font', chatConfig.botBubbleFont);
+
+            // Apply Bot Title
+            if (chatConfig.botName) {
+                document.getElementById('chat-title').textContent = chatConfig.botName;
+            }
+
+            // Apply Bot Avatar Asset
+            const avatarImg = document.getElementById('chat-avatar');
+            const avatarFallback = document.getElementById('chat-avatar-fallback');
+            if (chatConfig.avatarUrl) {
+                avatarImg.src = chatConfig.avatarUrl;
+                avatarImg.style.display = 'block';
+                avatarFallback.style.display = 'none';
+            } else {
+                avatarImg.style.display = 'none';
+                avatarFallback.style.display = 'flex';
+            }
+
+            // Apply Chat Body background
+            const bodyBg = chatConfig.bodyBg || '#efeae2';
+            const chatBody = document.getElementById('chat-body');
+            if (bodyBg.startsWith('url(') || bodyBg.startsWith('http')) {
+                chatBody.style.backgroundImage = bodyBg.startsWith('url(') ? bodyBg : `url(${bodyBg})`;
+                chatBody.style.backgroundColor = 'transparent';
+            } else {
+                chatBody.style.backgroundImage = 'none';
+                chatBody.style.backgroundColor = bodyBg;
+            }
+        }
+
+        function renderWelcomeMessage() {
+            const body = document.getElementById('chat-body');
+            const username = chatConfig.username || '';
+
+            // Date separator
+            const dateSep = document.createElement('div');
+            dateSep.className = 'chat-date-separator';
+            dateSep.innerHTML = `<span>${formatDate(new Date())}</span>`;
+            body.appendChild(dateSep);
+
+            // Welcome card
+            const card = document.createElement('div');
+            card.className = 'chat-welcome-card';
+            card.innerHTML = `
+                <div class="chat-welcome-icon">💬</div>
+                <div class="chat-welcome-title">Welcome${username ? ', ' + escHtml(username) : ''}!</div>
+                <div class="chat-welcome-subtitle">Ask me anything about your dashboard. I can help analyze filters and data.</div>
+            `;
+            body.appendChild(card);
+
+            // Bot Greeting
+            const greeting = username
+                ? `Hi ${username}! 👋 How can I help you today?`
+                : 'Hi! 👋 How can I help you today?';
+            renderMessage({ role: 'bot', text: greeting, time: new Date() });
+        }
+
+        function handleInputKeydown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendChatMessage();
+            }
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chat-input-field');
+            const text = (input.value || '').trim();
+            if (!text || isWaitingForReply) return;
+
+            input.value = '';
+
+            // Render user bubble
+            const userMsg = { role: 'user', text, time: new Date() };
+            chatMessages.push(userMsg);
+            renderMessage(userMsg);
+
+            // API Dispatch
+            if (chatConfig.apiUrl) {
+                isWaitingForReply = true;
+                document.getElementById('chat-send-btn').disabled = true;
+                renderTypingIndicator();
+                callChatApi(text);
+            } else {
+                const errMsg = {
+                    role: 'bot',
+                    text: 'No API URL configured. Please configure the chatbot in the extension settings.',
+                    time: new Date(),
+                    isError: true
+                };
+                chatMessages.push(errMsg);
+                renderMessage(errMsg);
+            }
+        }
+
+        async function callChatApi(messageText) {
+            try {
+                const method = chatConfig.apiMethod || 'POST';
+                const headers = { 'Content-Type': 'application/json' };
+
+                // Load custom headers
+                try {
+                    const custom = JSON.parse(chatConfig.headers || '{}');
+                    Object.assign(headers, custom);
+                } catch (e) { /* ignore JSON parse issues */ }
+
+                const body = buildRequestBody(messageText);
+                const fetchOpts = { method, headers };
+                if (method !== 'GET') {
+                    fetchOpts.body = body;
+                }
+
+                const response = await fetch(chatConfig.apiUrl, fetchOpts);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const replyField = chatConfig.responseField || 'reply';
+                const reply = resolveJsonPath(data, replyField);
+
+                removeTypingIndicator();
+
+                if (reply !== undefined && reply !== null) {
+                    const botMsg = { role: 'bot', text: String(reply), time: new Date() };
+                    chatMessages.push(botMsg);
+                    renderMessage(botMsg);
+                } else {
+                    const botMsg = { role: 'bot', text: JSON.stringify(data, null, 2), time: new Date() };
+                    chatMessages.push(botMsg);
+                    renderMessage(botMsg);
+                }
+            } catch (err) {
+                removeTypingIndicator();
+                const errMsg = {
+                    role: 'bot',
+                    text: `⚠ Error: ${err.message || 'Could not reach the API. Please check the URL and try again.'}`,
+                    time: new Date(),
+                    isError: true
+                };
+                chatMessages.push(errMsg);
+                renderMessage(errMsg);
+            } finally {
+                isWaitingForReply = false;
+                document.getElementById('chat-send-btn').disabled = false;
+                document.getElementById('chat-input-field').focus();
+            }
+        }
+
+        function buildRequestBody(messageText) {
+            const schema = chatConfig.requestSchema || '{"message":"{{MESSAGE}}","username":"{{USERNAME}}","email":"{{EMAIL}}"}';
+            const filled = schema
+                .replace(/\{\{MESSAGE\}\}/g, escapeJsonValue(messageText))
+                .replace(/\{\{USERNAME\}\}/g, escapeJsonValue(chatConfig.username || ''))
+                .replace(/\{\{EMAIL\}\}/g, escapeJsonValue(chatConfig.email || ''));
+            return filled;
+        }
+
+        function escapeJsonValue(str) {
+            if (!str) return '';
+            return str
+                .replace(/\\/g, '\\\\')
+                .replace(/"/g, '\\"')
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r')
+                .replace(/\t/g, '\\t');
+        }
+
+        function resolveJsonPath(obj, path) {
+            if (!path || !obj) return obj;
+            const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
+            let current = obj;
+            for (const part of parts) {
+                if (current === null || current === undefined) return undefined;
+                current = current[part];
+            }
+            return current;
+        }
+
+        function renderMessage(msg) {
+            const body = document.getElementById('chat-body');
+
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-msg ' + msg.role + (msg.isError ? ' error' : '');
+
+            let html = '';
+            if (msg.role === 'bot' && !msg.isError) {
+                const botName = chatConfig.botName || 'AI Assistant';
+                html += `<div class="chat-msg-sender">${escHtml(botName)}</div>`;
+            }
+            html += `<div class="chat-msg-text">${escHtml(msg.text)}</div>`;
+            html += `<div class="chat-msg-time">${formatTime(msg.time)}</div>`;
+
+            bubble.innerHTML = html;
+            body.appendChild(bubble);
+
+            scrollToBottom();
+        }
+
+        function renderTypingIndicator() {
+            const body = document.getElementById('chat-body');
+            const existing = document.getElementById('chat-typing-active');
+            if (existing) return;
+
+            const indicator = document.createElement('div');
+            indicator.className = 'chat-typing';
+            indicator.id = 'chat-typing-active';
+            indicator.innerHTML = `
+                <div class="chat-typing-dot"></div>
+                <div class="chat-typing-dot"></div>
+                <div class="chat-typing-dot"></div>
+            `;
+            body.appendChild(indicator);
+            scrollToBottom();
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('chat-typing-active');
+            if (indicator) indicator.remove();
+        }
+
+        function scrollToBottom() {
+            const body = document.getElementById('chat-body');
+            requestAnimationFrame(() => {
+                body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+            });
+        }
+
+        function formatTime(date) {
+            if (!date) return '';
+            const d = date instanceof Date ? date : new Date(date);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatDate(date) {
+            const today = new Date();
+            const d = date instanceof Date ? date : new Date(date);
+            if (d.toDateString() === today.toDateString()) return 'Today';
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+            return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function escHtml(str) {
+            if (!str) return '';
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function closeChat() {
+            tableau.extensions.ui.closeDialog('closed');
+        }
+    </script>
+</body>
+
+</html>
