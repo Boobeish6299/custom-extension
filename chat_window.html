@@ -359,10 +359,171 @@
             fill: #ffffff;
             margin-left: 2px; /* optical adjustment */
         }
+
+        /* ================================================================
+           Config Panel
+           ================================================================ */
+        #chat-config-ui {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #fff;
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px 16px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            color: #333;
+        }
+        #chat-config-ui h3 {
+            margin: 0 0 16px 0;
+            font-size: 15px;
+            color: #0055A4;
+        }
+        #chat-config-ui h4 {
+            margin: 16px 0 6px 0;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #666;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 4px;
+        }
+        #chat-config-ui label {
+            display: block;
+            font-weight: bold;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        #chat-config-ui input[type="text"],
+        #chat-config-ui input[type="number"],
+        #chat-config-ui select,
+        #chat-config-ui textarea {
+            width: 100%;
+            padding: 6px;
+            margin-top: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 12px;
+        }
+        #chat-config-ui input[type="color"] {
+            width: 48px;
+            height: 32px;
+            padding: 2px;
+            margin-top: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .cfg-color-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .cfg-color-row input[type="text"] {
+            flex: 1;
+            margin-top: 0;
+        }
+        #chat-config-ui button {
+            margin-top: 14px;
+            background: #0055A4;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            width: 100%;
+        }
+        #chat-config-ui button:hover { background: #003d7a; }
+        #chat-config-cancel {
+            background: #888 !important;
+            margin-top: 8px;
+        }
     </style>
 </head>
 
 <body>
+    <!-- Config Panel (shown via gear icon) -->
+    <div id="chat-config-ui">
+        <h3>⚙ AI Chat Configuration</h3>
+
+        <h4>Appearance</h4>
+        <label>Bot Name / Header Title</label>
+        <input type="text" id="cfg-bot-name" value="AI Assistant" />
+
+        <label>Avatar Image URL (optional)</label>
+        <input type="text" id="cfg-avatar-url" placeholder="https://example.com/avatar.png" />
+
+        <label>Header Background Color</label>
+        <div class="cfg-color-row">
+            <input type="color" id="cfg-header-bg-picker" value="#075e54" oninput="document.getElementById('cfg-header-bg').value=this.value" />
+            <input type="text" id="cfg-header-bg" value="#075e54" oninput="document.getElementById('cfg-header-bg-picker').value=this.value" />
+        </div>
+
+        <label>Header Font Color</label>
+        <div class="cfg-color-row">
+            <input type="color" id="cfg-header-font-picker" value="#ffffff" oninput="document.getElementById('cfg-header-font').value=this.value" />
+            <input type="text" id="cfg-header-font" value="#ffffff" oninput="document.getElementById('cfg-header-font-picker').value=this.value" />
+        </div>
+
+        <label>Chat Body Background (color or image URL)</label>
+        <input type="text" id="cfg-body-bg" value="#efeae2" placeholder="#efeae2 or url(...)" />
+
+        <label>User Bubble Color</label>
+        <div class="cfg-color-row">
+            <input type="color" id="cfg-user-bubble-bg-picker" value="#d9fdd3" oninput="document.getElementById('cfg-user-bubble-bg').value=this.value" />
+            <input type="text" id="cfg-user-bubble-bg" value="#d9fdd3" oninput="document.getElementById('cfg-user-bubble-bg-picker').value=this.value" />
+        </div>
+
+        <label>Bot Bubble Color</label>
+        <div class="cfg-color-row">
+            <input type="color" id="cfg-bot-bubble-bg-picker" value="#ffffff" oninput="document.getElementById('cfg-bot-bubble-bg').value=this.value" />
+            <input type="text" id="cfg-bot-bubble-bg" value="#ffffff" oninput="document.getElementById('cfg-bot-bubble-bg-picker').value=this.value" />
+        </div>
+
+        <h4>API</h4>
+        <label>REST API URL</label>
+        <input type="text" id="cfg-api-url" placeholder="https://api.example.com/chat" />
+
+        <label>HTTP Method</label>
+        <select id="cfg-api-method">
+            <option value="POST">POST</option>
+            <option value="GET">GET</option>
+            <option value="PUT">PUT</option>
+        </select>
+
+        <label>Headers (JSON)</label>
+        <input type="text" id="cfg-headers" placeholder='{"Authorization": "Bearer ..."}' />
+
+        <label>Request Schema Template</label>
+        <textarea id="cfg-request-schema" style="height:80px; font-family:monospace; font-size:11px;">{
+  "message": "{{MESSAGE}}",
+  "username": "{{USERNAME}}",
+  "email": "{{EMAIL}}"
+}</textarea>
+
+        <label>Response Field Path</label>
+        <input type="text" id="cfg-response-field" value="reply" placeholder="e.g. reply or data.message" />
+
+        <h4>User Identity (optional)</h4>
+        <label>Worksheet to read user from</label>
+        <select id="cfg-user-ws"><option value="">— Select Worksheet —</option></select>
+
+        <label>Username Column</label>
+        <select id="cfg-username-col"><option value="">— Select Column —</option></select>
+
+        <label>Email Column</label>
+        <select id="cfg-email-col"><option value="">— Select Column —</option></select>
+
+        <button onclick="saveChatConfig()">Save</button>
+        <button id="chat-config-cancel" onclick="hideChatConfig()">Cancel</button>
+    </div>
+
     <!-- Error Banner -->
     <div id="chat-error-banner" class="chat-error-banner"></div>
 
@@ -403,8 +564,8 @@
             try { return tableau.extensions.settings.get(key) || fallback; } catch(e) { return fallback; }
         }
 
-        // Initialize as standalone Dashboard Extension
-        tableau.extensions.initializeAsync().then(() => {
+        // Initialize as standalone Dashboard Extension (gear icon triggers showChatConfig)
+        tableau.extensions.initializeAsync({ configure: showChatConfig }).then(() => {
             chatConfig = {
                 apiUrl:        getSetting('chatbotApiUrl', ''),
                 apiMethod:     getSetting('chatbotApiMethod', 'POST'),
@@ -720,6 +881,109 @@
             const d = document.createElement('div');
             d.textContent = str;
             return d.innerHTML;
+        }
+
+        /* ================================================================
+           Config panel functions
+           ================================================================ */
+        function showChatConfig() {
+            const ui = document.getElementById('chat-config-ui');
+            ui.style.display = 'block';
+
+            // Populate fields from saved settings
+            document.getElementById('cfg-bot-name').value         = getSetting('chatbotBotName', 'AI Assistant');
+            document.getElementById('cfg-avatar-url').value       = getSetting('chatbotAvatarUrl', '');
+            document.getElementById('cfg-header-bg').value        = getSetting('chatbotHeaderBg', '#075e54');
+            document.getElementById('cfg-header-bg-picker').value = getSetting('chatbotHeaderBg', '#075e54');
+            document.getElementById('cfg-header-font').value      = getSetting('chatbotHeaderFont', '#ffffff');
+            document.getElementById('cfg-header-font-picker').value = getSetting('chatbotHeaderFont', '#ffffff');
+            document.getElementById('cfg-body-bg').value          = getSetting('chatbotBodyBg', '#efeae2');
+            document.getElementById('cfg-user-bubble-bg').value   = getSetting('chatbotUserBubbleBg', '#d9fdd3');
+            document.getElementById('cfg-user-bubble-bg-picker').value = getSetting('chatbotUserBubbleBg', '#d9fdd3');
+            document.getElementById('cfg-bot-bubble-bg').value    = getSetting('chatbotBotBubbleBg', '#ffffff');
+            document.getElementById('cfg-bot-bubble-bg-picker').value = getSetting('chatbotBotBubbleBg', '#ffffff');
+            document.getElementById('cfg-api-url').value          = getSetting('chatbotApiUrl', '');
+            document.getElementById('cfg-api-method').value       = getSetting('chatbotApiMethod', 'POST');
+            document.getElementById('cfg-headers').value          = getSetting('chatbotHeaders', '');
+            document.getElementById('cfg-request-schema').value   = getSetting('chatbotRequestSchema', '{\n  "message": "{{MESSAGE}}",\n  "username": "{{USERNAME}}",\n  "email": "{{EMAIL}}"\n}');
+            document.getElementById('cfg-response-field').value   = getSetting('chatbotResponseField', 'reply');
+
+            // Populate worksheets dropdown
+            const wsSelect = document.getElementById('cfg-user-ws');
+            try {
+                const worksheets = tableau.extensions.dashboardContent.dashboard.worksheets;
+                wsSelect.innerHTML = '<option value="">— Select Worksheet —</option>';
+                worksheets.forEach(w => {
+                    wsSelect.innerHTML += `<option value="${escHtml(w.name)}">${escHtml(w.name)}</option>`;
+                });
+                wsSelect.value = getSetting('chatbotUserWorksheet', '');
+                wsSelect.onchange = loadChatConfigColumns;
+                loadChatConfigColumns();
+            } catch(e) {}
+        }
+
+        async function loadChatConfigColumns() {
+            const wsName = document.getElementById('cfg-user-ws').value;
+            const usernameSelect = document.getElementById('cfg-username-col');
+            const emailSelect = document.getElementById('cfg-email-col');
+            usernameSelect.innerHTML = '<option value="">— Select Column —</option>';
+            emailSelect.innerHTML = '<option value="">— Select Column —</option>';
+            if (!wsName) return;
+            try {
+                const ws = tableau.extensions.dashboardContent.dashboard.worksheets.find(w => w.name === wsName);
+                if (!ws) return;
+                const dt = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 1 });
+                const savedUser = getSetting('chatbotUsernameCol', '');
+                const savedEmail = getSetting('chatbotEmailCol', '');
+                dt.columns.forEach(col => {
+                    const n = col.fieldName;
+                    const e = escHtml(n);
+                    usernameSelect.innerHTML += `<option value="${e}"${n === savedUser ? ' selected' : ''}>${e}</option>`;
+                    emailSelect.innerHTML += `<option value="${e}"${n === savedEmail ? ' selected' : ''}>${e}</option>`;
+                });
+            } catch(e) {
+                console.warn('[ChatWindow] Could not load columns:', e);
+            }
+        }
+
+        async function saveChatConfig() {
+            const s = tableau.extensions.settings;
+            s.set('chatbotBotName',       document.getElementById('cfg-bot-name').value || 'AI Assistant');
+            s.set('chatbotAvatarUrl',     document.getElementById('cfg-avatar-url').value || '');
+            s.set('chatbotHeaderBg',      document.getElementById('cfg-header-bg').value || '#075e54');
+            s.set('chatbotHeaderFont',    document.getElementById('cfg-header-font').value || '#ffffff');
+            s.set('chatbotBodyBg',        document.getElementById('cfg-body-bg').value || '#efeae2');
+            s.set('chatbotUserBubbleBg',  document.getElementById('cfg-user-bubble-bg').value || '#d9fdd3');
+            s.set('chatbotBotBubbleBg',   document.getElementById('cfg-bot-bubble-bg').value || '#ffffff');
+            s.set('chatbotApiUrl',        document.getElementById('cfg-api-url').value || '');
+            s.set('chatbotApiMethod',     document.getElementById('cfg-api-method').value || 'POST');
+            s.set('chatbotHeaders',       document.getElementById('cfg-headers').value || '{}');
+            s.set('chatbotRequestSchema', document.getElementById('cfg-request-schema').value || '{"message":"{{MESSAGE}}","username":"{{USERNAME}}","email":"{{EMAIL}}"}');
+            s.set('chatbotResponseField', document.getElementById('cfg-response-field').value || 'reply');
+            s.set('chatbotUserWorksheet', document.getElementById('cfg-user-ws').value || '');
+            s.set('chatbotUsernameCol',   document.getElementById('cfg-username-col').value || '');
+            s.set('chatbotEmailCol',      document.getElementById('cfg-email-col').value || '');
+
+            await s.saveAsync();
+            hideChatConfig();
+            // Re-apply theme immediately without full reload
+            chatConfig.botName       = getSetting('chatbotBotName', 'AI Assistant');
+            chatConfig.avatarUrl     = getSetting('chatbotAvatarUrl', '');
+            chatConfig.headerBg      = getSetting('chatbotHeaderBg', '#075e54');
+            chatConfig.headerFont    = getSetting('chatbotHeaderFont', '#ffffff');
+            chatConfig.bodyBg        = getSetting('chatbotBodyBg', '#efeae2');
+            chatConfig.userBubbleBg  = getSetting('chatbotUserBubbleBg', '#d9fdd3');
+            chatConfig.botBubbleBg   = getSetting('chatbotBotBubbleBg', '#ffffff');
+            chatConfig.apiUrl        = getSetting('chatbotApiUrl', '');
+            chatConfig.apiMethod     = getSetting('chatbotApiMethod', 'POST');
+            chatConfig.headers       = getSetting('chatbotHeaders', '{}');
+            chatConfig.requestSchema = getSetting('chatbotRequestSchema', '{"message":"{{MESSAGE}}","username":"{{USERNAME}}","email":"{{EMAIL}}"}');
+            chatConfig.responseField = getSetting('chatbotResponseField', 'reply');
+            applySettingsTheme();
+        }
+
+        function hideChatConfig() {
+            document.getElementById('chat-config-ui').style.display = 'none';
         }
 
     </script>
