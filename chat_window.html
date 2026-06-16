@@ -376,7 +376,6 @@
                 <div id="chat-status" class="chat-status">Online</div>
             </div>
         </div>
-        <button class="chat-close-btn" onclick="closeChat()">&times;</button>
     </div>
 
     <!-- Scrollable Chat Area -->
@@ -400,27 +399,65 @@
         let chatMessages = [];
         let isWaitingForReply = false;
 
-        // Initialize Dialogue
-        tableau.extensions.ui.initializeDialogAsync().then(payload => {
-            if (payload) {
-                try {
-                    chatConfig = JSON.parse(payload);
-                    applySettingsTheme();
-                } catch (e) {
-                    console.error('[ChatWindow] Could not parse config payload:', e);
-                }
-            }
+        function getSetting(key, fallback) {
+            try { return tableau.extensions.settings.get(key) || fallback; } catch(e) { return fallback; }
+        }
+
+        // Initialize as standalone Dashboard Extension
+        tableau.extensions.initializeAsync().then(() => {
+            chatConfig = {
+                apiUrl:        getSetting('chatbotApiUrl', ''),
+                apiMethod:     getSetting('chatbotApiMethod', 'POST'),
+                headers:       getSetting('chatbotHeaders', '{}'),
+                requestSchema: getSetting('chatbotRequestSchema', '{"message":"{{MESSAGE}}","username":"{{USERNAME}}","email":"{{EMAIL}}"}'),
+                responseField: getSetting('chatbotResponseField', 'reply'),
+                botName:       getSetting('chatbotBotName', 'AI Assistant'),
+                avatarUrl:     getSetting('chatbotAvatarUrl', ''),
+                bodyBg:        getSetting('chatbotBodyBg', '#efeae2'),
+                headerBg:      getSetting('chatbotHeaderBg', '#075e54'),
+                headerFont:    getSetting('chatbotHeaderFont', '#ffffff'),
+                userBubbleBg:  getSetting('chatbotUserBubbleBg', '#d9fdd3'),
+                userBubbleFont:getSetting('chatbotUserBubbleFont', '#111b21'),
+                botBubbleBg:   getSetting('chatbotBotBubbleBg', '#ffffff'),
+                botBubbleFont: getSetting('chatbotBotBubbleFont', '#111b21'),
+                username:      '',
+                email:         ''
+            };
+
+            applySettingsTheme();
 
             if (!chatConfig.apiUrl) {
                 const banner = document.getElementById('chat-error-banner');
-                banner.textContent = '⚠ No API URL configured. Messages cannot be sent.';
+                banner.textContent = '⚠ No API URL configured. Please configure the chatbot in the filter extension settings.';
                 banner.style.display = 'block';
             }
 
             renderWelcomeMessage();
             document.getElementById('chat-input-field').focus();
+
+            // Re-apply theme if filter extension saves new settings
+            tableau.extensions.settings.addEventListener(
+                tableau.TableauEventType.SettingsChanged,
+                () => {
+                    chatConfig.apiUrl        = getSetting('chatbotApiUrl', '');
+                    chatConfig.apiMethod     = getSetting('chatbotApiMethod', 'POST');
+                    chatConfig.headers       = getSetting('chatbotHeaders', '{}');
+                    chatConfig.requestSchema = getSetting('chatbotRequestSchema', '{"message":"{{MESSAGE}}","username":"{{USERNAME}}","email":"{{EMAIL}}"}');
+                    chatConfig.responseField = getSetting('chatbotResponseField', 'reply');
+                    chatConfig.botName       = getSetting('chatbotBotName', 'AI Assistant');
+                    chatConfig.avatarUrl     = getSetting('chatbotAvatarUrl', '');
+                    chatConfig.bodyBg        = getSetting('chatbotBodyBg', '#efeae2');
+                    chatConfig.headerBg      = getSetting('chatbotHeaderBg', '#075e54');
+                    chatConfig.headerFont    = getSetting('chatbotHeaderFont', '#ffffff');
+                    chatConfig.userBubbleBg  = getSetting('chatbotUserBubbleBg', '#d9fdd3');
+                    chatConfig.userBubbleFont= getSetting('chatbotUserBubbleFont', '#111b21');
+                    chatConfig.botBubbleBg   = getSetting('chatbotBotBubbleBg', '#ffffff');
+                    chatConfig.botBubbleFont = getSetting('chatbotBotBubbleFont', '#111b21');
+                    applySettingsTheme();
+                }
+            );
         }).catch(err => {
-            console.error('[ChatWindow] initializeDialogAsync failed:', err);
+            console.error('[ChatWindow] initializeAsync failed:', err);
             renderWelcomeMessage();
         });
 
@@ -685,9 +722,6 @@
             return d.innerHTML;
         }
 
-        function closeChat() {
-            tableau.extensions.ui.closeDialog('closed');
-        }
     </script>
 </body>
 
