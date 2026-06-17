@@ -3487,146 +3487,6 @@
                 }
             }
 
-            /*
-            if (includeHierarchy) {
-                configFilters.forEach(f => {
-                    const sp = selectedPathsMap[f.id] || [];
-
-                    // EXPLICIT Cancel All: user clicked the button. Apply a
-                    // sentinel that matches no rows so downstream worksheets
-                    // render empty. Tag the hierarchy so the NEXT apply
-                    // forcibly overrides the sentinel via explicit values
-                    // (clearFilterAsync on a non-existent value is unreliable).
-                    //
-                    // We block ONLY the effective cols (those Leader Filter
-                    // actually exposes). Applying the sentinel to a col we
-                    // don't track means we'd never undo it on recovery —
-                    // e.g. if the user's config lists L3 but Leader Filter
-                    // doesn't have it, downstream worksheets that DO have
-                    // L3 would stay blocked forever. AND-logic across the
-                    // remaining cols still hides every row, so this is
-                    // sufficient.
-                    if (sp.includes('___CANCELLED___')) {
-                        const blockCols = effectiveColsMap[f.id] || f.cols;
-                        blockCols.forEach(c => {
-                            const exactColName = exactFieldNameMap[c] || c;
-                            addToApply(exactColName, c, ['__FILTER_BLOCK_ALL__']);
-                        });
-                        wasCancelledMap[f.id] = true;
-                        return;
-                    }
-
-                    // IMPLICIT empty (no active users matched current
-                    // date/tool scope, or '___NONE___' legacy): clear the
-                    // filter and let other filters drive the view. Blocking
-                    // here would zero out the dashboard on first load if
-                    // Leader Filter ever returns 0 rows transiently.
-                    if (sp.length === 0 || sp.includes('___NONE___')) {
-                        f.cols.forEach(c => {
-                            const exactColName = exactFieldNameMap[c] || c;
-                            addToClear(exactColName, c);
-                        });
-                        return;
-                    }
-
-                    // Walk the tree, recording per-level filter requirements.
-                    // A level only needs a filter if some selected parent has
-                    // partially-selected children at that level. If every
-                    // selected parent's children at a level are fully selected,
-                    // the level is "fully covered" and we clear its filter —
-                    // otherwise rows with nulls at deeper levels (leaders
-                    // without data that far down) would be incorrectly excluded.
-                    // Use the EFFECTIVE cols list (only levels actually built
-                    // into the tree) so depth maps to the right field name
-                    // when a configured level was missing from the worksheet.
-                    const cols = effectiveColsMap[f.id] || f.cols;
-                    const tree = treesData[f.id] || {};
-                    const spSet = new Set(sp);
-                    const filterPerLevel = cols.map(() => ({ apply: false, values: new Set() }));
-
-                    function walkTree(node, parentPath) {
-                        const depth = parentPath.length;
-                        if (depth >= cols.length) return;
-                        const children = Object.keys(node || {});
-                        if (children.length === 0) return;
-
-                        const selectedChildren = [];
-                        let allChildrenSelected = true;
-                        children.forEach(c => {
-                            const childPath = [...parentPath, c].join('|');
-                            if (spSet.has(childPath)) selectedChildren.push(c);
-                            else allChildrenSelected = false;
-                        });
-
-                        if (!allChildrenSelected) filterPerLevel[depth].apply = true;
-                        selectedChildren.forEach(c => {
-                            filterPerLevel[depth].values.add(c);
-                            walkTree(node[c], [...parentPath, c]);
-                        });
-                    }
-                    walkTree(tree, []);
-
-                    // FIX: Always filter all levels in the hierarchy to ensure consistent filter state,
-                    // and inject null/blank values from Level 2 onwards to prevent shallower leaf nodes
-                    // from being filtered out.
-                    for (let i = 0; i < cols.length; i++) {
-                        filterPerLevel[i].apply = true;
-                        if (i >= 1) {
-                            filterPerLevel[i].values.add(null);
-                            filterPerLevel[i].values.add("");
-                            filterPerLevel[i].values.add("null");
-                            filterPerLevel[i].values.add("Null");
-                            filterPerLevel[i].values.add("NULL");
-                            filterPerLevel[i].values.add("(null)");
-                            filterPerLevel[i].values.add("(Null)");
-                            filterPerLevel[i].values.add("(NULL)");
-                            filterPerLevel[i].values.add("%null%");
-                            filterPerLevel[i].values.add("%Null%");
-                            filterPerLevel[i].values.add("%NULL%");
-                        }
-                    }
-
-                    // If the previous apply used the blocking sentinel,
-                    // clearFilterAsync may not undo it cleanly. Force an
-                    // explicit applyFilterAsync with the full master values
-                    // at each level so Tableau's filter state is unambiguously
-                    // overwritten. Drop the flag once we've done this.
-                    const recovering = wasCancelledMap[f.id];
-                    console.log(`[filter-ext] _applyFilterStateToTableau: hierarchy="${f.title}" recovering=${recovering} sp.length=${sp.length} cols=${JSON.stringify(cols)}`);
-                    cols.forEach((col, i) => {
-                        const exactColName = exactFieldNameMap[col] || col;
-                        const entry = filterPerLevel[i];
-                        if (entry.apply && entry.values.size > 0) {
-                            addToApply(exactColName, col, Array.from(entry.values));
-                        } else if (recovering) {
-                            const masterVals = collectValuesAtDepth(masterTreesData[f.id] || {}, i);
-                            if (masterVals.size > 0) {
-                                addToApply(exactColName, col, Array.from(masterVals));
-                            } else {
-                                addToClear(exactColName, col);
-                            }
-                        } else {
-                            addToClear(exactColName, col);
-                        }
-                    });
-                    if (recovering) wasCancelledMap[f.id] = false;
-
-                    // Any configured columns that aren't in the effective list
-                    // (e.g. L3 listed in config but absent from Leader Filter)
-                    // never get touched by the walk above. If a previous run
-                    // applied something to them — including the old buggy
-                    // Cancel All sentinel — they would stay stuck. Clear them
-                    // unconditionally on every apply so nothing lingers.
-                    const effectiveSet = new Set(cols);
-                    f.cols.forEach(col => {
-                        if (effectiveSet.has(col)) return;
-                        const exactColName = exactFieldNameMap[col] || col;
-                        addToClear(exactColName, col);
-                    });
-                });
-            }
-            */
-
             // Worksheet filters (e.g. Tool) — always included; empty selection
             // here means "clear filter / show all", which is the existing
             // semantic for the Tool dropdown.
@@ -3660,7 +3520,16 @@
                             const allVals = wsFiltersData[wf.id] || [];
                             const isAll  = sel.length === 0 ||
                                 (allVals.length > 0 && sel.length === allVals.length);
-                            await param.changeValueAsync(isAll ? 'all' : sel.join(','));
+                            const newValue = isAll ? 'all' : sel.join(',');
+                            const currVal = param.currentValue ? param.currentValue.value : null;
+
+                            if (currVal === newValue) {
+                                console.log(`[filter-ext] Parameter "${_pn}" is already set to "${newValue}". Skipping changeValueAsync.`);
+                            } else {
+                                await param.changeValueAsync(newValue);
+                                if (param.currentValue) param.currentValue.value = newValue;
+                                console.log(`[filter-ext] Parameter "${_pn}" updated to "${newValue}".`);
+                            }
                         } catch (paramErr) {
                             console.warn(`[filter-ext] changeValueAsync failed for "${_pn}":`, paramErr);
                         }
@@ -3898,7 +3767,27 @@
                 await Promise.all(paramIds.map(pId => {
                     const pObj = paramObjects[pId];
                     if (!pObj) return null;
-                    return pObj.changeValueAsync(pendingParams[pId])
+                    const newValue = pendingParams[pId];
+                    const currVal = pObj.currentValue ? pObj.currentValue.value : null;
+
+                    // Safely compare dates/times
+                    const toTime = v => {
+                        if (!v) return 0;
+                        if (v instanceof Date) return v.getTime();
+                        const parsed = Date.parse(v);
+                        return isNaN(parsed) ? 0 : parsed;
+                    };
+
+                    if (currVal != null && toTime(currVal) === toTime(newValue)) {
+                        console.log(`[filter-ext] Date parameter "${pId}" is already set to "${newValue}". Skipping changeValueAsync.`);
+                        return Promise.resolve();
+                    }
+
+                    return pObj.changeValueAsync(newValue)
+                        .then(() => {
+                            if (pObj.currentValue) pObj.currentValue.value = newValue;
+                            console.log(`[filter-ext] Date parameter "${pId}" updated to "${newValue}".`);
+                        })
                         .catch(e => console.error('[filter-ext] changeValueAsync failed for', pId, e));
                 }));
                 pendingParams = {};
