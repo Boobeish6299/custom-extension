@@ -1152,7 +1152,14 @@
                     // single-leader pick) while we initialise. Every branch below
                     // ends in applyAllFilters(), whose finally writes
                     // applyActive='' and triggers the tree's definitive fetch.
-                    await writeSyncParam({ applyActive: '1' });
+                    const syncDates = getSyncDates();
+                    const syncTools = getSyncTools();
+                    await writeSyncParam({
+                        applyActive: '1',
+                        tools: syncTools,
+                        startDate: syncDates.startDate,
+                        endDate: syncDates.endDate
+                    });
 
                     try {
                         const hasPendingDateDefaults = Object.keys(pendingParams).length > 0;
@@ -3320,7 +3327,7 @@
         const SYNC_PARAM_NAME = 'Hierarchy Sync';
         let _syncParam = null;          // cached Parameter object
         let _syncParamMissing = false;  // warn once, then no-op
-        let _syncParamState = { applyActive: '', stamp: null, paths: [], tools: [] };
+        let _syncParamState = { applyActive: '', stamp: null, paths: [], tools: [], startDate: '', endDate: '' };
 
         // Cached result of getParametersAsync() — reused within a Phase 1→Phase 2 window
         // to avoid redundant round-trips. Invalidated on every ParameterChanged event so
@@ -3347,6 +3354,35 @@
             } catch (e) {
                 console.warn('[filter-ext] sync param write failed:', e);
             }
+        }
+
+        function getSyncDates() {
+            const dates = getStartAndEndDates();
+            let startDate = '';
+            let endDate = '';
+            if (dates) {
+                const toIso = d => {
+                    if (!d || isNaN(d.getTime())) return '';
+                    const yyyy = d.getUTCFullYear();
+                    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+                    const dd = String(d.getUTCDate()).padStart(2, '0');
+                    return `${yyyy}-${mm}-${dd}`;
+                };
+                startDate = toIso(dates.startVal);
+                endDate = toIso(dates.endVal);
+            }
+            return { startDate, endDate };
+        }
+
+        function getSyncTools() {
+            const selectedTools = [];
+            configWsFilters
+                .filter(wf => !wf.dependsOn && !wf.paramName)
+                .forEach(wf => {
+                    const picks = selectedWsPathsMap[wf.id] || [];
+                    picks.filter(v => v && v !== '___NONE___').forEach(v => selectedTools.push(v));
+                });
+            return selectedTools;
         }
 
         // Wrapper around dashboard.getParametersAsync() that caches the result for
@@ -3412,8 +3448,15 @@
                 // tree's debouncedFetch — the tree's fetch signature includes
                 // these paths, so this ordering guarantees its first post-apply
                 // signature read already sees the new selection (cache miss).
-                await writeSyncParam({ paths: explicit, stamp: Date.now(), tools: selectedTools });
-                console.log(`[filter-ext] syncSelectionToSettings: paths=${JSON.stringify(explicit)}, tools=${JSON.stringify(selectedTools)}`);
+                const syncDates = getSyncDates();
+                await writeSyncParam({
+                    paths: explicit,
+                    stamp: Date.now(),
+                    tools: selectedTools,
+                    startDate: syncDates.startDate,
+                    endDate: syncDates.endDate
+                });
+                console.log(`[filter-ext] syncSelectionToSettings: paths=${JSON.stringify(explicit)}, tools=${JSON.stringify(selectedTools)}, dates=${syncDates.startDate}..${syncDates.endDate}`);
             } catch (e) {
                 console.warn('[filter-ext] settings sync error:', e);
             }
@@ -3909,7 +3952,14 @@
             // releases suppress + does one final fetch) after Phase 2 below.
             // Sent via the 'Hierarchy Sync' parameter — settings.set/saveAsync
             // never reached the tree extension (settings are per-instance).
-            await writeSyncParam({ applyActive: '1' });
+            const syncDates = getSyncDates();
+            const syncTools = getSyncTools();
+            await writeSyncParam({
+                applyActive: '1',
+                tools: syncTools,
+                startDate: syncDates.startDate,
+                endDate: syncDates.endDate
+            });
 
             // Scope change (date param or TOOL): some worksheets must re-apply
             // their existing filter values even when those values are unchanged,
