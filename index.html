@@ -816,6 +816,7 @@
         let masterWsFiltersData = {};
         let activeWsFiltersData = {};
         let selectedWsPathsMap = {};
+        let wsFiltersAllSelectedMap = {};
         let exactFieldNameMap = {};
         // Pre-built parent→child value lookup for dependent wsFilters.
         // Key: child wf.id. Value: { parentValue: Set<childValue> }.
@@ -1523,6 +1524,26 @@
                     console.warn(`Parameter "${pConf.paramName}" not found on dashboard.`);
                 }
             });
+            
+            // Initialize wsFiltersAllSelectedMap based on the current workbook parameter values
+            configWsFilters.forEach(wf => {
+                if (wf.paramName) {
+                    const p = parameters.find(x => x.name === wf.paramName);
+                    if (p) {
+                        const val = p.currentValue && p.currentValue.value ? p.currentValue.value.toString().toLowerCase().trim() : '';
+                        if (val === 'all') {
+                            wsFiltersAllSelectedMap[wf.id] = true;
+                        } else {
+                            wsFiltersAllSelectedMap[wf.id] = false;
+                        }
+                    } else {
+                        wsFiltersAllSelectedMap[wf.id] = true; // default fallback
+                    }
+                } else {
+                    wsFiltersAllSelectedMap[wf.id] = true; // default fallback
+                }
+            });
+
             renderPrevPeriodDisplay();
 
             // Removed: polling fallback via setInterval + getParametersAsync().
@@ -2536,8 +2557,8 @@
                             }
 
                             // Preserve manual selections if the user picked a custom subset of the total available models.
-                            const hasCustomSelection = current && current.length > 0 && current.length < totalAvailableCount && !current.includes('___NONE___');
-                            if ((autoSelect && !hasCustomSelection) || !current || current.length === 0) {
+                            const hasCustomSelection = !wsFiltersAllSelectedMap[wf.id] && current && current.length > 0 && current.length < totalAvailableCount && !current.includes('___NONE___');
+                            if (wsFiltersAllSelectedMap[wf.id] || (autoSelect && !hasCustomSelection) || !current || current.length === 0) {
                                 if (parentIsAll) {
                                     selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
                                 } else {
@@ -3109,6 +3130,7 @@
         // TOOL is scope-level: changing it should re-snap the team tree
         // (greyed-out members become active again, etc.).
         function selectWsAllPaths(wfId) {
+            wsFiltersAllSelectedMap[wfId] = true;
             selectedWsPathsMap[wfId] = [...(wsFiltersData[wfId] || [])];
             clearWsWarning(wfId);
             renderWsTree(wfId);
@@ -3127,6 +3149,7 @@
         }
 
         function clearWsFilterPaths(wfId) {
+            wsFiltersAllSelectedMap[wfId] = false;
             selectedWsPathsMap[wfId] = ['___NONE___'];
             renderWsTree(wfId);
             renderWsPills(wfId);
@@ -3153,6 +3176,7 @@
                 // Deselect
                 selectedWsPathsMap[wfId] = selectedWsPathsMap[wfId].filter(p => p !== val);
                 clearWsWarning(wfId);
+                wsFiltersAllSelectedMap[wfId] = false;
             } else {
                 // Enforce cap before adding
                 const currentCount = (selectedWsPathsMap[wfId] || [])
@@ -3169,6 +3193,15 @@
                     showWsWarning(wfId, `Maximum ${maxSel} individual models selected`);
                 } else {
                     clearWsWarning(wfId);
+                }
+                
+                // If all available items are selected, mark as All Selected
+                const _allVals = wsFiltersData[wfId] || [];
+                const _sel = selectedWsPathsMap[wfId].filter(v => v !== '___NONE___');
+                if (_allVals.length > 0 && _sel.length === _allVals.length) {
+                    wsFiltersAllSelectedMap[wfId] = true;
+                } else {
+                    wsFiltersAllSelectedMap[wfId] = false;
                 }
             }
             renderWsTree(wfId);
@@ -3216,12 +3249,15 @@
                             selectedWsPathsMap[wf.id] = wsFiltersData[wf.id].filter(v => 
                                 v.toLowerCase().startsWith('gemini') || v.toLowerCase().includes('gemini')
                             );
+                            wsFiltersAllSelectedMap[wf.id] = true;
                         } else if (hasWindsurf && !hasGCA) {
                             // Automatically select all models for Windsurf
                             selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
+                            wsFiltersAllSelectedMap[wf.id] = true;
                         } else {
                             // Fallback / both selected: select all models
                             selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
+                            wsFiltersAllSelectedMap[wf.id] = true;
                         }
                     } else {
                         // Parent is "All" (or lookup not yet built) — restore full list
@@ -3231,6 +3267,7 @@
                         }
                         // Automatically select all models when parent is "All"
                         selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
+                        wsFiltersAllSelectedMap[wf.id] = true;
                     }
                     renderWsTree(wf.id);
                     renderWsPills(wf.id);
@@ -3517,9 +3554,7 @@
                     } else {
                         try {
                             const sel    = vals.filter(v => v !== '___NONE___');
-                            const allVals = wsFiltersData[wf.id] || [];
-                            const isAll  = sel.length === 0 ||
-                                (allVals.length > 0 && sel.length === allVals.length);
+                            const isAll  = wsFiltersAllSelectedMap[wf.id] || sel.length === 0;
                             const newValue = isAll ? 'all' : sel.join(',');
                             const currVal = param.currentValue ? param.currentValue.value : null;
 
