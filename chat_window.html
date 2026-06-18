@@ -565,7 +565,7 @@
         }
 
         // Initialize as standalone Dashboard Extension (gear icon triggers showChatConfig)
-        tableau.extensions.initializeAsync({ configure: showChatConfig }).then(() => {
+        tableau.extensions.initializeAsync({ 'configure': showChatConfig }).then(async () => {
             chatConfig = {
                 apiUrl:        getSetting('chatbotApiUrl', ''),
                 apiMethod:     getSetting('chatbotApiMethod', 'POST'),
@@ -593,13 +593,14 @@
                 banner.style.display = 'block';
             }
 
+            await loadUserIdentityFromWorksheet();
             renderWelcomeMessage();
             document.getElementById('chat-input-field').focus();
 
             // Re-apply theme if filter extension saves new settings
             tableau.extensions.settings.addEventListener(
                 tableau.TableauEventType.SettingsChanged,
-                () => {
+                async () => {
                     chatConfig.apiUrl        = getSetting('chatbotApiUrl', '');
                     chatConfig.apiMethod     = getSetting('chatbotApiMethod', 'POST');
                     chatConfig.headers       = getSetting('chatbotHeaders', '{}');
@@ -615,6 +616,7 @@
                     chatConfig.botBubbleBg   = getSetting('chatbotBotBubbleBg', '#ffffff');
                     chatConfig.botBubbleFont = getSetting('chatbotBotBubbleFont', '#111b21');
                     applySettingsTheme();
+                    await loadUserIdentityFromWorksheet();
                 }
             );
         }).catch(err => {
@@ -739,6 +741,12 @@
                 } catch (e) { /* ignore JSON parse issues */ }
 
                 const body = buildRequestBody(messageText);
+                console.log('[ChatWindow] Request details:', {
+                    url: chatConfig.apiUrl,
+                    method: method,
+                    headers: headers,
+                    body: body ? JSON.parse(body) : null
+                });
                 const fetchOpts = { method, headers };
                 if (method !== 'GET') {
                     fetchOpts.body = body;
@@ -778,6 +786,44 @@
                 isWaitingForReply = false;
                 document.getElementById('chat-send-btn').disabled = false;
                 document.getElementById('chat-input-field').focus();
+            }
+        }
+
+        async function loadUserIdentityFromWorksheet() {
+            const wsName = getSetting('chatbotUserWorksheet', '');
+            const userColName = getSetting('chatbotUsernameCol', '');
+            const emailColName = getSetting('chatbotEmailCol', '');
+
+            if (!wsName) {
+                chatConfig.username = '';
+                chatConfig.email = '';
+                return;
+            }
+
+            try {
+                const ws = tableau.extensions.dashboardContent.dashboard.worksheets.find(w => w.name === wsName);
+                if (!ws) return;
+                
+                const dt = await ws.getSummaryDataAsync({ ignoreSelection: true, maxRows: 1 });
+                if (dt && dt.data && dt.data.length > 0) {
+                    const row = dt.data[0];
+                    const userColIndex = dt.columns.findIndex(c => c.fieldName === userColName);
+                    const emailColIndex = dt.columns.findIndex(c => c.fieldName === emailColName);
+
+                    if (userColIndex !== -1 && row[userColIndex]) {
+                        chatConfig.username = row[userColIndex].value || row[userColIndex].formattedValue || '';
+                    } else {
+                        chatConfig.username = '';
+                    }
+                    
+                    if (emailColIndex !== -1 && row[emailColIndex]) {
+                        chatConfig.email = row[emailColIndex].value || row[emailColIndex].formattedValue || '';
+                    } else {
+                        chatConfig.email = '';
+                    }
+                }
+            } catch (e) {
+                console.warn('[ChatWindow] Failed to load user identity from worksheet:', e);
             }
         }
 
@@ -980,6 +1026,7 @@
             chatConfig.requestSchema = getSetting('chatbotRequestSchema', '{"message":"{{MESSAGE}}","username":"{{USERNAME}}","email":"{{EMAIL}}"}');
             chatConfig.responseField = getSetting('chatbotResponseField', 'reply');
             applySettingsTheme();
+            await loadUserIdentityFromWorksheet();
         }
 
         function hideChatConfig() {
