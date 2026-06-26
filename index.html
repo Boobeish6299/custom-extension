@@ -786,7 +786,17 @@
         let fetchDataInProgress = false;
         let pendingAutoSelect = false;
         let configWsFilters = [];
+
+        // --- Extension Visibility Deferral ---
+        let needsApplyOnVisible = false;
+        let needsFetchOnVisible = false;
+        let needsAutoSelectOnVisible = false;
+
+        function isVisible() {
+            return window.innerWidth > 0 && window.innerHeight > 0 && !document.hidden;
+        }
         let _dependentRefetchTimer = null;
+        let lastStorageValue = null;
         // Worksheet names (or name substrings) the extension must NEVER push
         // applyFilterAsync / clearFilterAsync to. Heavy calc sheets that aren't
         // shown (e.g. the LOC-Generated/Accepted "Previous period Calc" sheets)
@@ -981,7 +991,7 @@
                 try {
                     const unregFilter = ws.addEventListener(
                         tableau.TableauEventType.FilterChanged,
-                        (ev) => {
+                        async (ev) => {
                             const fieldName = ev && (ev.fieldName || (ev.filter && ev.filter.fieldName));
                             if (suppressRefetch || isApplyingFilters) {
                                 return;
@@ -989,6 +999,19 @@
                             if (isManagedColumn(fieldName)) {
                                 return;
                             }
+                            // Check if another instance is applying filters
+                            try {
+                                const params = await _getParametersAsync();
+                                const syncParam = params.find(x => x.name === 'Hierarchy Sync');
+                                if (syncParam && syncParam.currentValue) {
+                                    const parsed = parseSyncParam(syncParam.currentValue.value);
+                                    if (parsed && parsed.applyActive === '1') {
+                                        console.log(`Event: FilterChanged "${fieldName}" — suppressed (Another instance is applying).`);
+                                        return;
+                                    }
+                                }
+                            } catch (err) {}
+
                             // External filter change: refresh the Team tree so
                             // it reflects the new scope, but DON'T auto-select
                             // — only explicit Param/Tool changes should
@@ -1004,7 +1027,7 @@
                 try {
                     const unregSummary = ws.addEventListener(
                         tableau.TableauEventType.SummaryDataChanged,
-                        () => {
+                        async () => {
                             // SummaryDataChanged fires for many reasons
                             // (workbook recompute after our own filter writes,
                             // etc.). If we auto-selected here, our own Cancel
@@ -1014,6 +1037,19 @@
                             if (suppressRefetch || isApplyingFilters) {
                                 return;
                             }
+                            // Check if another instance is applying filters
+                            try {
+                                const params = await _getParametersAsync();
+                                const syncParam = params.find(x => x.name === 'Hierarchy Sync');
+                                if (syncParam && syncParam.currentValue) {
+                                    const parsed = parseSyncParam(syncParam.currentValue.value);
+                                    if (parsed && parsed.applyActive === '1') {
+                                        console.log('Event: SummaryDataChanged — suppressed (Another instance is applying).');
+                                        return;
+                                    }
+                                }
+                            } catch (err) {}
+
                             debouncedFetchDataAndRender({ autoSelect: false });
                         }
                     );
@@ -1032,22 +1068,35 @@
                     try {
                         const unreg = p.addEventListener(
                             tableau.TableauEventType.ParameterChanged,
-                            () => {
+                            async () => {
                                 // Always refresh the cached param object so
                                 // subsequent reads see the new value.
                                 paramObjects[pConf.id] = p;
                                 _parameterListCache = null; // value changed — next call fetches fresh
-                                if (userApplyInProgress) {
-                                    // We pushed this change as part of the
-                                    // Apply flow; the apply itself will run
-                                    // the cascade. Skip to avoid duplicate
-                                    // queries and an unwanted auto-select
-                                    // overriding the user's team picks.
-                                    console.log(
-                                        `Event: ParameterChanged "${pConf.paramName}" — suppressed (user Apply in progress).`
-                                    );
-                                    return;
-                                }
+                                if (userApplyInProgress || isApplyingFilters) {
+                                     // We pushed this change as part of the
+                                     // Apply flow; the apply itself will run
+                                     // the cascade. Skip to avoid duplicate
+                                     // queries and an unwanted auto-select
+                                     // overriding the user's team picks.
+                                     console.log(
+                                         `Event: ParameterChanged "${pConf.paramName}" — suppressed (Apply in progress).`
+                                     );
+                                     return;
+                                 }
+                                 // Check if another instance is applying filters
+                                 try {
+                                     const params = await _getParametersAsync();
+                                     const syncParam = params.find(x => x.name === 'Hierarchy Sync');
+                                     if (syncParam && syncParam.currentValue) {
+                                         const parsed = parseSyncParam(syncParam.currentValue.value);
+                                         if (parsed && parsed.applyActive === '1') {
+                                             console.log(`Event: ParameterChanged "${pConf.paramName}" — suppressed (Another instance is applying).`);
+                                             return;
+                                         }
+                                     }
+                                 } catch (err) {}
+
                                 console.log(
                                     `Event: ParameterChanged "${pConf.paramName}". Refreshing dependent filters...`
                                 );
@@ -1070,6 +1119,50 @@
                 });
             } catch (e) {
                 console.warn('Failed to register parameter listeners:', e);
+            }
+
+            // Listener for Hierarchy Sync parameter (cross-tab synchronization)
+            try {
+                const parameters = await _getParametersAsync();
+                const syncParam = parameters.find(x => x.name === 'Hierarchy Sync');
+                if (syncParam) {
+                    const unregSync = syncParam.addEventListener(
+                        tableau.TableauEventType.ParameterChanged,
+                        async () => {
+                            try {
+                                const p = await tableau.extensions.dashboardContent.dashboard
+                                    .findParameterAsync('Hierarchy Sync');
+                                const raw = p.currentValue && p.currentValue.value;
+                                if (raw === _lastWrittenSyncParamValue) {
+                                    console.log('[filter-ext] Hierarchy Sync ParameterChanged matches last written value. Ignoring to prevent loop.');
+                                    return;
+                                }
+                                const parsed = parseSyncParam(raw);
+                                if (parsed && parsed.applyActive === '1') {
+                                    // Someone is applying, ignore event
+                                    return;
+                                }
+                                
+                                console.log('[filter-ext] Hierarchy Sync ParameterChanged event received:', raw);
+                                loadStateFromSyncParam(raw);
+                                configFilters.forEach(f => { renderPills(f.id); renderTree(f.id); });
+                                configWsFilters.forEach(wf => { renderWsPills(wf.id); renderWsTree(wf.id); });
+                                
+                                if (!isVisible()) {
+                                    needsApplyOnVisible = true;
+                                    console.log('[filter-ext] Hidden. Deferring applyAllFilters due to Hierarchy Sync change.');
+                                } else {
+                                    applyAllFilters();
+                                }
+                            } catch (err) {
+                                console.warn('[filter-ext] Failed to handle Hierarchy Sync change:', err);
+                            }
+                        }
+                    );
+                    tableauListeners.push(unregSync);
+                }
+            } catch (e) {
+                console.warn('[filter-ext] Failed to register Hierarchy Sync listener:', e);
             }
         }
 
@@ -1115,7 +1208,12 @@
                     });
                     // Detect a true first-load (no saved state in localStorage)
                     // BEFORE loadStateFromStorage runs and populates the maps.
-                    const isFirstLoad = !localStorage.getItem('tableau_hierarchy_state');
+                    let isFirstLoad = true;
+                    try {
+                        isFirstLoad = !localStorage.getItem('tableau_hierarchy_state');
+                    } catch (e) {
+                        console.warn('[filter-ext] Failed to read localStorage for isFirstLoad:', e);
+                    }
                     loadStateFromStorage();
                     applyStylesFromSettings();
                     document.getElementById('config-ui').style.display = 'none';
@@ -1127,6 +1225,17 @@
                     // fetch just so paramObjects would be populated in time for
                     // date seeding. Now we seed dates here, before any fetch.
                     await loadAndRenderParameters();
+
+                    // Load state from Hierarchy Sync parameter (server fallback/override)
+                    try {
+                        const syncParam = await tableau.extensions.dashboardContent.dashboard
+                            .findParameterAsync('Hierarchy Sync');
+                        if (syncParam && syncParam.currentValue) {
+                            loadStateFromSyncParam(syncParam.currentValue.value);
+                        }
+                    } catch (e) {
+                        console.warn('[filter-ext] Failed to find or load Hierarchy Sync on startup:', e);
+                    }
 
                     // First-load: seed default date window (today-7 → today)
                     // into pendingParams so userApply can batch them with the
@@ -1195,9 +1304,104 @@
                         }
                     } catch (e) {}
 
+                    function handleVisibilityOrResize() {
+                        if (isVisible()) {
+                            if (needsApplyOnVisible) {
+                                needsApplyOnVisible = false;
+                                const autoSelect = needsAutoSelectOnVisible;
+                                needsAutoSelectOnVisible = false;
+                                const mustFetch = needsFetchOnVisible || Object.keys(firstFetchDone).length === 0;
+                                needsFetchOnVisible = false;
+
+                                if (mustFetch) {
+                                    console.log('[filter-ext] Visibility restored. Running deferred fetch then apply.');
+                                    fetchDataAndRender({ autoSelect }).then(() => {
+                                        applyAllFilters({ autoSelectActive: autoSelect });
+                                    });
+                                } else {
+                                    console.log('[filter-ext] Visibility restored. Running deferred applyAllFilters.');
+                                    applyAllFilters({ autoSelectActive: autoSelect });
+                                }
+                            } else if (needsFetchOnVisible) {
+                                needsFetchOnVisible = false;
+                                const autoSelect = needsAutoSelectOnVisible;
+                                needsAutoSelectOnVisible = false;
+                                console.log('[filter-ext] Visibility restored. Running deferred fetchDataAndRender.');
+                                fetchDataAndRender({ autoSelect });
+                            }
+                        }
+                    }
+
+                    window.addEventListener('resize', handleVisibilityOrResize);
+                    document.addEventListener('visibilitychange', handleVisibilityOrResize);
+
+                    // Helper to compare array contents
+                    function arraysEqual(a, b) {
+                        if (!a || !b) return !a && !b;
+                        if (a.length !== b.length) return false;
+                        for (let i = 0; i < a.length; i++) {
+                            if (a[i] !== b[i]) return false;
+                        }
+                        return true;
+                    }
+
                     // Storage Listener for Cross-Tab Sync
                     window.addEventListener('storage', (e) => {
                         if (e.key === 'tableau_hierarchy_state') {
+                            const newVal = e.newValue;
+                            if (newVal === lastStorageValue) {
+                                return; // no change, skip to avoid loop
+                            }
+                            lastStorageValue = newVal;
+
+                            // Semantic check: does the new storage value differ for any filter configured in this instance?
+                            try {
+                                const parsed = JSON.parse(newVal) || {};
+                                const stored = parsed.paths || {};
+                                const storedExplicit = parsed.explicit || {};
+                                
+                                let hasDiff = false;
+                                for (const f of configFilters) {
+                                    const colKey = f.cols.join(',');
+                                    // Skip check if the other dashboard does not support/send this filter
+                                    if (stored[colKey] === undefined && storedExplicit[colKey] === undefined) {
+                                        continue;
+                                    }
+                                    const nextExplicit = storedExplicit[colKey] || [];
+                                    const currExplicit = explicitPathsMap[f.id] || [];
+                                    if (!arraysEqual(nextExplicit, currExplicit)) {
+                                        hasDiff = true;
+                                        break;
+                                    }
+                                    const nextSel = stored[colKey] || [];
+                                    const currSel = selectedPathsMap[f.id] || [];
+                                    if (!arraysEqual(nextSel, currSel)) {
+                                        hasDiff = true;
+                                        break;
+                                    }
+                                }
+                                if (!hasDiff) {
+                                    for (const wf of configWsFilters) {
+                                        // Skip check if the other dashboard does not support/send this filter
+                                        if (stored['ws_' + wf.col] === undefined) {
+                                            continue;
+                                        }
+                                        const nextWs = stored['ws_' + wf.col] || [];
+                                        const currWs = selectedWsPathsMap[wf.id] || [];
+                                        if (!arraysEqual(nextWs, currWs)) {
+                                            hasDiff = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (!hasDiff) {
+                                    console.log('[filter-ext] storage changed, but our configured filters match. Skipping sync to prevent loop.');
+                                    return;
+                                }
+                            } catch (err) {
+                                console.warn('[filter-ext] failed semantic storage check:', err);
+                            }
+
                             loadStateFromStorage();
                             configFilters.forEach(f => { renderPills(f.id); renderTree(f.id); });
                             configWsFilters.forEach(wf => { renderWsPills(wf.id); renderWsTree(wf.id); });
@@ -2007,6 +2211,14 @@
             }
         }
 
+        function parseSyncParam(raw) {
+            if (!raw || typeof raw !== 'string') return null;
+            try {
+                const o = JSON.parse(raw);
+                return (o && typeof o === 'object') ? o : null;
+            } catch (_) { return null; }
+        }
+
         function getCleanFieldName(name) {
             if (!name) return '';
             let clean = name.trim();
@@ -2101,6 +2313,12 @@
         // activity now. Manual toggles + post-apply refreshes pass false so the
         // user's explicit selection isn't clobbered.
         async function fetchDataAndRender({ autoSelect = false } = {}) {
+            if (!isVisible()) {
+                needsFetchOnVisible = true;
+                if (autoSelect) needsAutoSelectOnVisible = true;
+                console.log('[filter-ext] fetchDataAndRender: extension is hidden. Deferring fetch.');
+                return;
+            }
             if (fetchDataInProgress) return;
             fetchDataInProgress = true;
             try {
@@ -2133,6 +2351,8 @@
                         return;
                     }
 
+                    let preExistingLevelsFilter = null;
+
                     // If it is the first fetch and the source worksheet is filtered by the hierarchy columns,
                     // we must clear those filters first to get the complete tree.
                     if (!firstFetchDone[f.id]) {
@@ -2142,6 +2362,22 @@
                                 f.cols.some(c => matchColumnName(c, flt.fieldName, exactFieldNameMap))
                             );
                             if (colsToClear.length > 0) {
+                                // Extract the pre-existing filter values
+                                const selectedLevels = {};
+                                colsToClear.forEach(flt => {
+                                    const cleanFilterName = getCleanFieldName(flt.fieldName);
+                                    if (flt.isAllSelected !== true) {
+                                        const vals = (flt.appliedValues || []).map(v => v.value != null ? v.value.toString() : '');
+                                        if (vals.length > 0) {
+                                            selectedLevels[cleanFilterName] = new Set(vals);
+                                        }
+                                    }
+                                });
+                                if (Object.keys(selectedLevels).length > 0) {
+                                    preExistingLevelsFilter = selectedLevels;
+                                    console.log('[filter-ext] Captured pre-existing hierarchy filter values:', Object.keys(selectedLevels));
+                                }
+
                                 console.log(`[filter-ext] Clearing ${colsToClear.length} existing hierarchy filters on source worksheet "${ws.name}" to fetch full tree...`);
                                 await Promise.all(colsToClear.map(async (flt) => {
                                     try {
@@ -2251,6 +2487,32 @@
                     const masterPathsSet = new Set(getAllPaths(masterTreesData[f.id]));
                     const currentSel = selectedPathsMap[f.id] || [];
 
+                    let hasReconstructed = false;
+                    if (preExistingLevelsFilter && !firstFetchDone[f.id]) {
+                        const reconstructedExplicit = [];
+                        Object.keys(tree).forEach(rootName => {
+                            findExplicitPicks(tree[rootName], rootName, 0, presentColsWithIdx, preExistingLevelsFilter, "", reconstructedExplicit);
+                        });
+                        if (reconstructedExplicit.length > 0) {
+                            console.log('[filter-ext] Reconstructed explicit team picks from pre-existing filters:', reconstructedExplicit);
+                            explicitPathsMap[f.id] = reconstructedExplicit;
+                            recomputeSelectedFromExplicit(f.id);
+                            firstFetchDone[f.id] = true;
+                            hasReconstructed = true;
+
+                            // Write back to the sync parameter immediately so visual extension is updated
+                            const syncDates = getSyncDates();
+                            const syncTools = getSyncTools();
+                            await writeSyncParam({
+                                paths: reconstructedExplicit,
+                                stamp: Date.now(),
+                                tools: syncTools,
+                                startDate: syncDates.startDate,
+                                endDate: syncDates.endDate
+                            });
+                        }
+                    }
+
                     // hadExplicitPicks: user has made a real selection (not a
                     // sentinel and not the full default-all set). When true,
                     // a date/tool change must preserve the pick — the user
@@ -2262,7 +2524,9 @@
                     const hadExplicitPicks = prevExplicit.length > 0
                         && !(prevExplicit.length === 1 && (prevExplicit[0] === '___NONE___' || prevExplicit[0] === '___CANCELLED___'));
 
-                    if (!firstFetchDone[f.id]) {
+                    if (hasReconstructed) {
+                        // Selection already reconstructed from pre-existing filters
+                    } else if (!firstFetchDone[f.id]) {
                         // First open: default to all active leaders.
                         selectedPathsMap[f.id] = activePaths;
                         explicitPathsMap[f.id] = Object.keys(tree || {});
@@ -2277,13 +2541,13 @@
                         // Either:
                         //   • Manual toggle / post-apply refresh (autoSelect false), OR
                         //   • Scope change WITH an explicit pick (autoSelect true).
-                        // Preserve the user's explicit picks; only drop paths
-                        // that no longer exist in the master tree. Sentinels
+                        // Preserve the user's explicit picks. Do NOT prune them against
+                        // the master tree here (avoiding race conditions where query lag
+                        // temporarily reports fewer nodes and drops selections). Sentinels
                         // (Cancel All) survive untouched.
+                        explicitPathsMap[f.id] = prevExplicit;
                         const hadSentinel = currentSel.length === 1
                             && (currentSel[0] === '___NONE___' || currentSel[0] === '___CANCELLED___');
-                        explicitPathsMap[f.id] = prevExplicit
-                            .filter(p => masterPathsSet.has(p));
                         if (hadSentinel && explicitPathsMap[f.id].length === 0) {
                             // Cancel All / NONE: keep the sentinel verbatim so
                             // _applyFilterStateToTableau still emits the block-all
@@ -2592,8 +2856,8 @@
 
                     if (wsFiltersData[wf.id].length) {
                         const current = selectedWsPathsMap[wf.id];
-                        if (!current || current.length === 0) {
-                            // No saved selection — default to all values selected
+                        if (wsFiltersAllSelectedMap[wf.id] || !current || current.length === 0) {
+                            // Automatically select all values if "All" is active, or if no selection exists
                             selectedWsPathsMap[wf.id] = [...wsFiltersData[wf.id]];
                             clearWsWarning(wf.id);
                         } else {
@@ -2604,6 +2868,9 @@
                             );
                         }
                     }
+
+                    // Update all-selected flag based on latest selection and domain
+                    updateWsAllSelectedFlag(wf.id);
                 } catch (err) {
                     console.error(`Error loading worksheet filter "${wf.title}":`, err);
                     wsFiltersData[wf.id] = masterWsFiltersData[wf.id] || [];
@@ -3217,6 +3484,14 @@
             }
         }
 
+        function updateWsAllSelectedFlag(wfId) {
+            const values = wsFiltersData[wfId] || [];
+            const selected = (selectedWsPathsMap[wfId] || []).filter(v => v !== '___NONE___');
+            if (values.length > 0) {
+                wsFiltersAllSelectedMap[wfId] = (selected.length === values.length);
+            }
+        }
+
         // Re-populate child ws-filter value lists when a parent filter changes.
         // Uses the pre-built dependencyLookup — pure client-side, no Tableau
         // API calls — so no applyFilterAsync triggers a Tableau recompute.
@@ -3365,6 +3640,7 @@
         let _syncParam = null;          // cached Parameter object
         let _syncParamMissing = false;  // warn once, then no-op
         let _syncParamState = { applyActive: '', stamp: null, paths: [], tools: [], startDate: '', endDate: '' };
+        let _lastWrittenSyncParamValue = null;
 
         // Cached result of getParametersAsync() — reused within a Phase 1→Phase 2 window
         // to avoid redundant round-trips. Invalidated on every ParameterChanged event so
@@ -3386,8 +3662,10 @@
                     }
                 }
                 Object.assign(_syncParamState, patch);
-                await _syncParam.changeValueAsync(JSON.stringify(_syncParamState));
-                console.log('[filter-ext] writeSyncParam:', JSON.stringify(_syncParamState));
+                const stringified = JSON.stringify(_syncParamState);
+                _lastWrittenSyncParamValue = stringified;
+                await _syncParam.changeValueAsync(stringified);
+                console.log('[filter-ext] writeSyncParam:', stringified);
             } catch (e) {
                 console.warn('[filter-ext] sync param write failed:', e);
             }
@@ -3859,6 +4137,12 @@
 
         // --- Core Utils ---
         async function applyAllFilters({ autoSelectActive = false } = {}) {
+            if (!isVisible()) {
+                needsApplyOnVisible = true;
+                if (autoSelectActive) needsAutoSelectOnVisible = true;
+                console.log('[filter-ext] applyAllFilters: extension is hidden. Deferring apply.');
+                return;
+            }
             if (isApplyingFilters) {
                 pendingApply = true;
                 if (autoSelectActive) pendingAutoSelect = true;
@@ -4095,6 +4379,37 @@
                 }
             });
             return paths;
+        }
+
+        function isNodeFullySelected(node, name, depth, presentColsWithIdx, selectedLevels) {
+            if (depth >= presentColsWithIdx.length) return true;
+            const colName = presentColsWithIdx[depth].col;
+            const cleanColName = getCleanFieldName(colName);
+            
+            if (selectedLevels[cleanColName] && !selectedLevels[cleanColName].has(name)) {
+                return false;
+            }
+            
+            const childrenKeys = Object.keys(node || {});
+            if (childrenKeys.length > 0) {
+                for (const childName of childrenKeys) {
+                    if (!isNodeFullySelected(node[childName], childName, depth + 1, presentColsWithIdx, selectedLevels)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function findExplicitPicks(node, name, depth, presentColsWithIdx, selectedLevels, currentPath, outPicks) {
+            const path = currentPath ? currentPath + '|' + name : name;
+            if (isNodeFullySelected(node, name, depth, presentColsWithIdx, selectedLevels)) {
+                outPicks.push(path);
+                return;
+            }
+            Object.keys(node || {}).forEach(childName => {
+                findExplicitPicks(node[childName], childName, depth + 1, presentColsWithIdx, selectedLevels, path, outPicks);
+            });
         }
 
         // Select All: check every leader in the current scope. Set
@@ -4391,30 +4706,41 @@
             } catch (e) {}
         }
         function saveStateToStorage() {
-            // Save by column key (e.g. "L2 (VP),L3 (Manager),L4 (IC)") instead of filter ID
-            // so different dashboard instances with different IDs can share state
-            const byColKey = {};
-            const explicitByColKey = {};
-            configFilters.forEach(f => {
-                const colKey = f.cols.join(',');
-                byColKey[colKey] = selectedPathsMap[f.id] || [];
-                explicitByColKey[colKey] = explicitPathsMap[f.id] || [];
-            });
-            configWsFilters.forEach(wf => {
-                byColKey['ws_' + wf.col] = selectedWsPathsMap[wf.id] || [];
-            });
-            localStorage.setItem('tableau_hierarchy_state', JSON.stringify({
-                paths: byColKey,
-                explicit: explicitByColKey
-            }));
+            try {
+                // Save by column key (e.g. "L2 (VP),L3 (Manager),L4 (IC)") instead of filter ID
+                // so different dashboard instances with different IDs can share state
+                const byColKey = {};
+                const explicitByColKey = {};
+                configFilters.forEach(f => {
+                    const colKey = f.cols.join(',');
+                    byColKey[colKey] = selectedPathsMap[f.id] || [];
+                    explicitByColKey[colKey] = explicitPathsMap[f.id] || [];
+                });
+                const wsAllSelected = {};
+                configWsFilters.forEach(wf => {
+                    byColKey['ws_' + wf.col] = selectedWsPathsMap[wf.id] || [];
+                    wsAllSelected['ws_' + wf.col] = wsFiltersAllSelectedMap[wf.id] || false;
+                });
+                const stateStr = JSON.stringify({
+                    paths: byColKey,
+                    explicit: explicitByColKey,
+                    wsAllSelected: wsAllSelected
+                });
+                lastStorageValue = stateStr;
+                localStorage.setItem('tableau_hierarchy_state', stateStr);
+            } catch (e) {
+                console.warn('[filter-ext] saveStateToStorage failed:', e);
+            }
         }
         function loadStateFromStorage() {
-            const s = localStorage.getItem('tableau_hierarchy_state');
-            if (s) {
-                try {
+            try {
+                const s = localStorage.getItem('tableau_hierarchy_state');
+                if (s) {
+                    lastStorageValue = s;
                     const parsed = JSON.parse(s) || {};
                     const stored = parsed.paths || {};
                     const storedExplicit = parsed.explicit || {};
+                    const storedAllSel = parsed.wsAllSelected || {};
                     configFilters.forEach(f => {
                         const colKey = f.cols.join(',');
                         // Try matching by column key first (cross-dashboard sync)
@@ -4451,8 +4777,51 @@
                         else if (stored[wf.id] && Array.isArray(stored[wf.id])) {
                             selectedWsPathsMap[wf.id] = stored[wf.id];
                         }
+                        if (storedAllSel[colKey] !== undefined) {
+                            wsFiltersAllSelectedMap[wf.id] = storedAllSel[colKey];
+                        }
+                        else if (storedAllSel[wf.id] !== undefined) {
+                            wsFiltersAllSelectedMap[wf.id] = storedAllSel[wf.id];
+                        }
                     });
-                } catch (e) { console.warn('Error loading state:', e); }
+                }
+            } catch (e) {
+                console.warn('[filter-ext] loadStateFromStorage failed:', e);
+            }
+        }
+        function loadStateFromSyncParam(syncRaw) {
+            if (!syncRaw) return;
+            try {
+                const sync = parseSyncParam(syncRaw);
+                if (!sync) return;
+
+                console.log('[filter-ext] loadStateFromSyncParam parsing sync payload:', JSON.stringify(sync));
+
+                // 1. Restore Tool filter selections
+                if (Array.isArray(sync.tools)) {
+                    configWsFilters.forEach(wf => {
+                        // Identify tool filter (independent, no paramName)
+                        if (!wf.dependsOn && !wf.paramName) {
+                            if (sync.tools.length === 0) {
+                                wsFiltersAllSelectedMap[wf.id] = true;
+                                selectedWsPathsMap[wf.id] = [];
+                            } else {
+                                wsFiltersAllSelectedMap[wf.id] = false;
+                                selectedWsPathsMap[wf.id] = [...sync.tools];
+                            }
+                        }
+                    });
+                }
+
+                // 2. Restore Team filter selections
+                if (Array.isArray(sync.paths)) {
+                    configFilters.forEach(f => {
+                        explicitPathsMap[f.id] = [...sync.paths];
+                        recomputeSelectedFromExplicit(f.id);
+                    });
+                }
+            } catch (err) {
+                console.warn('[filter-ext] loadStateFromSyncParam failed:', err);
             }
         }
         function getContrastYIQ(hexcolor){
